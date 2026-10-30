@@ -52,7 +52,12 @@ export function AttachFilesButton({ editorRef }: { editorRef: React.RefObject<HT
 				onChange={(e) => {
 					const resolve = window.lh?.getPathForFile;
 					const { paths } = resolve ? pathsForFiles(Array.from(e.currentTarget.files ?? []), resolve) : { paths: [] };
-					if (paths.length > 0) editorRef.current?.dispatchEvent(new CustomEvent(INSERT_FILE_PATHS_EVENT, { detail: paths }));
+					if (paths.length > 0) {
+						const confirmed = window.confirm(
+							"Insert local file paths into the prompt?\n\nThese paths can include sensitive information (for example usernames and directory names) and may be sent in your next message."
+						);
+						if (confirmed) editorRef.current?.dispatchEvent(new CustomEvent(INSERT_FILE_PATHS_EVENT, { detail: paths }));
+					}
 					e.currentTarget.value = ""; // allow re-picking the same file
 				}}
 			/>
