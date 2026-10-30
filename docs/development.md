@@ -13,11 +13,12 @@ Not a chat app with a graph bolted on: sessions are probe→teach lessons, the p
 ## Commands
 
 ```bash
-npm install          # once
+npm install              # once
 
-npm run dev          # http://localhost:3000
-npm run build        # production build (standalone output)
-npm start            # serve the production build
+npm run dev              # http://localhost:3000
+npm run build            # production build (standalone output)
+npx next build --webpack # production build (arm64 supported)
+npm start                # serve the production build
 
 npm test             # the full suite (node:test via tsx; deterministic, no LLM, no network)
 npm run lint         # eslint — includes the import law (architecture §2)
