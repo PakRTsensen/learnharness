@@ -76,6 +76,8 @@ function advance(
 ): Phase3 {
 	if (!parts) return phase;
 	for (const part of parts) {
+		if (part.type === "tool-resume_probe" && part.state === "output-available" &&
+			(part.output as { ok?: unknown } | undefined)?.ok === true) phase = "probe";
 		// STRICTLY SEQUENTIAL: probe → plan only via a concluded probe_done,
 		// plan → teach only via a valid nodeId-tagged question. Rejected
 		// calls remain retry context and never represent posed teaching.
@@ -157,7 +159,7 @@ export function phaseTimeline(messages: readonly PhaseMessage[]): Phase3[] {
 
 // ─── the native fold (Wave D: record-side phase over LhMessage[]) ───────────
 
-import { probeDoneResultIds, type LhMessage } from "./native-messages.ts";
+import { probeDoneResultIds, successfulToolResultIds, type LhMessage } from "./native-messages.ts";
 
 /** The phase at `upToIndex` (inclusive; default: the last message) of a
  *  NATIVE record. probe→plan advances at the probe_done call's clean
@@ -168,6 +170,7 @@ export function phaseAt3Lh(messages: readonly LhMessage[], upToIndex?: number): 
 	let phase: Phase3 = "probe";
 	const last = Math.min(upToIndex ?? messages.length - 1, messages.length - 1);
 	const concluded = probeDoneResultIds(messages.slice(0, last + 1));
+	const resumed = successfulToolResultIds(messages.slice(0, last + 1), "resume_probe");
 	// Results project back onto their calls in the client. Match that rule
 	// even when asking for the phase at an earlier message index.
 	const rejected = new Set(messages.flatMap((m) =>
@@ -178,6 +181,7 @@ export function phaseAt3Lh(messages: readonly LhMessage[], upToIndex?: number): 
 		const m = messages[i]!;
 		const role = (m as { role?: string }).role;
 		if (role === "toolResult") {
+			if (resumed.has(m.id)) phase = "probe";
 			if (phase === "probe" && concluded.has(m.id)) phase = "plan";
 		} else if (m.role === "assistant" && m.stopReason !== "error" && m.stopReason !== "aborted") {
 			const content = (m as { content?: ReadonlyArray<{ type?: string; name?: string; id?: string; arguments?: unknown }> }).content ?? [];
