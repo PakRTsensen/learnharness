@@ -42,7 +42,7 @@ Secrets and machine-specific paths only. Model choice and thinking budgets are t
 | Variable | Purpose |
 |---|---|
 | `OPENROUTER_API_KEY` | required — all LLM calls go through OpenRouter |
-| `GOOGLE_SEARCH_API_KEY` + `GOOGLE_CSE_ID` | researcher's `web_search` (Google Custom Search) |
+| `TAVILY_API_KEY` / `BRAVE_API_KEY` / `FIRECRAWL_API_KEY` | optional — researcher's `web_search`; any one key activates its engine (automatic order Tavily → Brave → Firecrawl unless Settings pins one) |
 | `DEEPGRAM_API_KEY` | optional — dictation (STT token minting; audio streams browser→Deepgram, never through the server) |
 | `CHROME_PATH` | optional system Chrome fallback for demo verification; the app's own browser helper is primary (nothing is downloaded) |
 
@@ -125,7 +125,7 @@ src/
     tools/plan.ts               plan_init (author-once mermaid plan, deterministic parser)
     tools/probe.ts              probe_done (probe→teach handoff seam)
     tools/jobs.ts               research / demo / visual tool surfaces
-    tools/web.ts                web_search (Google CSE) + web_fetch (researcher only)
+    tools/web.ts                web_search (search port) + web_fetch (researcher only)
     subagents/                  researcher · demo-builder · visual-maker
                                 · pdf-reader,
                                 extraction pipeline (extractor/auditor + merger handoff),
