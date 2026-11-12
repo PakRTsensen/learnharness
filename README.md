@@ -57,6 +57,24 @@ See [Getting started](docs/getting-started.md) for model setup, dictation, files
 
 All three platforms support in-app updates.
 
+## Self-hosted web (Docker)
+
+Run the web app on your own server:
+
+```bash
+cp .env.example .env   # optional: provider keys and host port
+docker compose up -d --build
+```
+
+Open <http://localhost:3000>. Chats, graph ledgers, settings and keys persist
+in the `learnharness-data` volume. The default image is server-only (no
+Chromium); set `WITH_CHROMIUM=1` at build time to enable demo-builder browser
+verification.
+
+LearnHarness has no user accounts — put a reverse proxy with authentication or
+a VPN in front of it. See the [Docker guide](docs/docker.md) for configuration,
+backups, auto-start and troubleshooting.
+
 ## Your keys, your data
 
 - **Your keys and models.** No LearnHarness subscription or markup. Billing depends on your provider, CLI configuration, subscription, or local setup. The live cost meter estimates known API costs, not subscription, CLI, or custom-endpoint charges.

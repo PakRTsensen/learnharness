@@ -1,0 +1,45 @@
+name: learnharness
+
+services:
+  app:
+    build:
+      context: .
+      args:
+        # Chromium is optional; the default image is server-only.
+        WITH_CHROMIUM: "${WITH_CHROMIUM:-0}"
+    image: learnharness:latest
+    container_name: learnharness
+    restart: unless-stopped
+    # Reap Chromium/child processes and forward SIGTERM cleanly.
+    init: true
+    ports:
+      # Host port is configurable; the container always listens on 3000.
+      - "${LH_PORT:-3000}:3000"
+    environment:
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      LH_DATA_DIR: "/data"
+      LH_AUTH_FILE: "/data/auth.json"
+    # Optional: copy .env.example to .env to pass provider keys from the
+    # host environment. Keys added in Settings are stored in the volume.
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      # All chats, graph ledgers, settings and auth.json live here.
+      - learnharness-data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 45s
+      retries: 3
+
+volumes:
+  learnharness-data:
