@@ -1,0 +1,29 @@
+# Keep the build context small and never bake local state/secrets into image layers.
+.git
+.gitignore
+.github
+node_modules
+.next
+dist
+core-plugins
+.core-plugins-*
+plugins/*/node_modules
+plugins/*/.sdk
+plugins/*/dist
+data
+.fresh-data
+.memory
+
+# Secrets and local env files
+auth.json
+chatgpt-credentials.json*
+github-copilot-credentials.json*
+xai-credentials.json*
+.env
+.env.*
+!.env.example
+
+# Local noise
+*.log
+.DS_Store
+*.tsbuildinfo
