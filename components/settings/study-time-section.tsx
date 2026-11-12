@@ -10,7 +10,7 @@ import {
 	STUDY_IDLE_MINUTES_MIN,
 	type StudyTimeSettings,
 } from "@/src/core";
-import { CommitInput, SettingsRow, ThinSelect } from "./controls.tsx";
+import { CommitInput, SettingsRow, ThinSelect, type SettingsCommitResult } from "./controls.tsx";
 
 export function StudyTimeSection({
 	studyTime,
@@ -19,7 +19,7 @@ export function StudyTimeSection({
 }: {
 	studyTime: StudyTimeSettings | undefined;
 	resolved: Required<StudyTimeSettings>;
-	onSectionChange: (next: StudyTimeSettings) => void;
+	onSectionChange: (next: StudyTimeSettings) => SettingsCommitResult;
 }) {
 	return (
 		<>
@@ -33,12 +33,11 @@ export function StudyTimeSection({
 					onCommit={(v) => {
 						// Empty = factory default (absence is the unset for numbers).
 						if (v === "") {
-							onSectionChange({ ...studyTime, idleMinutes: undefined });
-							return;
+							return onSectionChange({ ...studyTime, idleMinutes: undefined });
 						}
 						const n = Number(v);
-						if (!Number.isFinite(n)) return; // bad input: no write
-						onSectionChange({
+						if (!Number.isFinite(n)) return false; // bad input: no write
+						return onSectionChange({
 							...studyTime,
 							idleMinutes: Math.min(STUDY_IDLE_MINUTES_MAX, Math.max(STUDY_IDLE_MINUTES_MIN, Math.round(n))),
 						});

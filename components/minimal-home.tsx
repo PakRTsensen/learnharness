@@ -18,13 +18,11 @@
  * The practice pick flow mirrors GraphView's contract verbatim (home
  * lifts the pick set; the chip opens the overlay in select mode).
  */
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ClockIcon, ListTreeIcon, UploadIcon } from "lucide-react";
-import { ChainTableOverlay } from "@/components/chain-table.tsx";
+import { useCallback, useEffect, useState } from "react";
+import { ClockIcon, ListTreeIcon } from "lucide-react";import { ChainTableOverlay } from "@/components/chain-table.tsx";
 import { StudyTimeOverlay } from "@/components/study-time-overlay";
 import { GraphCostControl } from "@/components/graph-view.tsx";
-import { NOTES_IMPORT_ACCEPT, NotesImportErrors, useNotesImport } from "@/components/notes-import.tsx";
-import { Hint } from "@/components/ui/hint";
+import { NotesImportControl, NotesImportErrors, NotesImportNotices, useNotesImport } from "@/components/notes-import.tsx";import { Hint } from "@/components/ui/hint";
 import type { ChatSummary, GraphCostSummary, GraphSnapshot } from "@/src/core";
 
 /** The quiet centered summary — a pure body (props in, markup out) so
@@ -73,9 +71,10 @@ export function KnowledgeSummary({
 				{importedNotes} {importedNotes === 1 ? "imported note" : "imported notes"}
 			</p>
 			{empty && (
-				<p className="pt-2 font-ui text-xs text-muted-foreground/70">
-					Nothing here yet — import notes to begin building the graph.
-				</p>
+				<div className="pt-2 font-ui text-xs text-muted-foreground/70">
+					<p>Start a session to begin learning.</p>
+					<p className="mt-1">Attach your material with the paperclip or drag and drop.</p>
+				</div>
 			)}
 		</div>
 	);
@@ -99,7 +98,6 @@ export function MinimalHome({
 	const [chats, setChats] = useState<ChatSummary[]>([]);
 	const [chainsOpen, setChainsOpen] = useState(false);
 	const [studyOpen, setStudyOpen] = useState(false);
-	const fileInputRef = useRef<HTMLInputElement>(null);
 
 	const readState = useCallback(() => {
 		fetch("/api/graph")
@@ -117,6 +115,8 @@ export function MinimalHome({
 	}, []);
 	useEffect(() => {
 		readState();
+		window.addEventListener("lh:graph-revision", readState);
+		return () => window.removeEventListener("lh:graph-revision", readState);
 	}, [readState]);
 
 	// The practice chip opens the table in select mode (GraphView's law):
@@ -134,18 +134,6 @@ export function MinimalHome({
 
 	return (
 		<div className="relative h-full">
-			<input
-				ref={fileInputRef}
-				type="file"
-				multiple
-				accept={NOTES_IMPORT_ACCEPT}
-				className="hidden"
-				onChange={(e) => {
-					onImportFiles(e.target.files);
-					e.target.value = ""; // allow re-picking the same file
-				}}
-			/>
-
 			{/* The quiet summary — centered, biased up off the composer. */}
 			<div className="pointer-events-none flex h-full items-center justify-center pb-40">
 				<KnowledgeSummary
@@ -194,22 +182,10 @@ export function MinimalHome({
 							</button>
 						</Hint>
 					</div>
-					<div className="shrink-0 rounded-xl border bg-card/85 px-1 py-[3px] shadow-lg backdrop-blur">
-						<Hint label="Import notes into the graph" side="bottom">
-							<button
-								type="button"
-								disabled={importing}
-								onClick={() => fileInputRef.current?.click()}
-								data-testid="import-notes"
-								className="flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent disabled:opacity-50"
-							>
-								<UploadIcon className="size-3" />
-								{importing ? "Importing…" : "Import notes…"}
-							</button>
-						</Hint>
-					</div>
+					<NotesImportControl importing={importing} onImportFiles={onImportFiles} />
 				</div>
 				<NotesImportErrors errors={notesImport.errors} />
+				<NotesImportNotices notices={notesImport.notices} />
 				{costs && costs.runs.length > 0 && <GraphCostControl costs={costs} />}
 			</div>
 
@@ -219,7 +195,7 @@ export function MinimalHome({
 			    order, so a full-bleed surface covering the drag band must
 			    paint after everything it covers. */}
 			<ChainTableOverlay
-				open={chainsOpen && (snapshot?.propositions.length ?? 0) > 0}
+				open={chainsOpen}
 				nodes={snapshot?.propositions ?? []}
 				chains={snapshot?.chains ?? []}
 				sessions={snapshot?.sessions ?? {}}

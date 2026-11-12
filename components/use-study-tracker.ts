@@ -14,7 +14,7 @@ export function useStudyTracker(chatId: string, started: boolean): void {
 		const onVisibility = () => tracker.visibility(document.hidden);
 		const onPageHide = () => tracker.unload();
 		const onPageShow = (e: PageTransitionEvent) => {
-			if (e.persisted && document.hasFocus()) tracker.focus();
+			if (e.persisted && (typeof document.hasFocus !== "function" || document.hasFocus())) tracker.focus();
 		};
 		const inputEvents = ["keydown", "pointerdown", "wheel", "touchmove", "pointermove"] as const;
 		for (const type of inputEvents) window.addEventListener(type, onInput, { capture: true, passive: true });

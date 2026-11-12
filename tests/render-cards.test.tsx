@@ -134,7 +134,7 @@ describe("DispatchCard — the BYOK refusal tone (owner, 2026-09-22)", () => {
 		assert.ok(html.includes('data-testid="dispatch-setup-link"'));
 		assert.ok(html.includes("Set up models"));
 		assert.ok(!html.includes("failed"));
-		assert.ok(!html.includes("text-red-500"));
+		assert.ok(!html.includes("text-error"));
 	});
 
 	it("a key-refused job is INFO: 'needs a provider key', 'Add a key' (zero-keys wave, 66dbea9)", () => {
@@ -152,7 +152,7 @@ describe("DispatchCard — the BYOK refusal tone (owner, 2026-09-22)", () => {
 		const html = renderToStaticMarkup(inJobs([job({ error: "FAILED: headless crashed" })]));
 		assert.ok(html.includes('data-testid="dispatch-settled"'));
 		assert.ok(html.includes("failed"));
-		assert.ok(html.includes("text-red-500"));
+		assert.ok(html.includes("text-error"));
 		assert.ok(!html.includes("dispatch-refused"));
 	});
 
@@ -467,7 +467,7 @@ changed and the final volume must be calculated from the combined gas law.`,
 		assert.ok(bar.includes('class="katex"'), "math in the teaser renders through KaTeX");
 		assert.ok(!bar.includes("textL") && !bar.includes("textatm"), "LaTeX commands are not shown as plain text");
 		assert.ok(bar.includes("whitespace-nowrap"), "the teaser prevents rendered text from wrapping");
-		assert.ok(bar.includes("text-ellipsis"), "the teaser trails off when it exceeds one line");
+		assert.ok(bar.includes("data-preview-line") && !bar.includes("text-ellipsis"), "the measured line uses one explicit continuation marker, not a second CSS ellipsis");
 		assert.ok(!bar.includes("<br"), "source newlines are flattened rather than rendered as forced line breaks");
 	});
 
@@ -483,7 +483,7 @@ changed and the final volume must be calculated from the combined gas law.`,
 				/>,
 		);
 		assert.ok(html.includes('data-testid="question-dock-bar"'), "the scroll-collapse strip");
-		assert.match(html, /data-testid="question-dock-bar"[^>]*items-baseline/, "label and actions align with the teaser text baseline");
+		assert.match(html, /data-testid="question-dock-bar"[^>]*items-center/, "label and actions are vertically centered beside the fixed-height teaser");
 		assert.ok(!html.includes("Check your understanding"), "no invitation copy outside teach phase");
 		assert.match(html, /Answer/, "the strip keeps its Answer affordance");
 	});
@@ -535,6 +535,20 @@ describe("probe-done card", () => {
 			<ProbeDoneCard part={{ state: "input-available", input: { assessment: validAssessment } } as never} />,
 		);
 		assert.match(html, /modal logic basics/);
+	});
+
+	it("renders math in the strand, assessment, and summary", () => {
+		const html = renderToStaticMarkup(
+			<ProbeDoneCard part={{ state: "output-available", input: { assessment: {
+				strands: [{ strand: "Compare $x$", assessment: "Understands $y$" }],
+				summary: "Review\n\n$$\nz=1\n$$",
+			} }, output: { ok: true } }} />,
+		);
+		assert.equal((html.match(/class="katex"/g) ?? []).length, 3);
+		assert.ok(html.includes("katex-display"), "display math in the summary renders as display math");
+		assert.match(html, /Compare/);
+		assert.match(html, /Understands/);
+		assert.match(html, /Review/);
 	});
 
 	it("a REJECTED assessment (the stringified live shape) renders the retry note, never the garbage", () => {

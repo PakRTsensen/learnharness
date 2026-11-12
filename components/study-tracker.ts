@@ -155,10 +155,19 @@ let singleton: StudyTracker | null = null;
 /** The page's one tracker, created on first use. Never call during SSR. */
 export function studyTracker(): StudyTracker {
 	singleton ??= createStudyTracker({
-		setInterval: (fn, ms) => window.setInterval(fn, ms),
+		setInterval: (fn, ms) => {
+			const handle = window.setInterval(fn, ms);
+			// Browser-scoped timer: in a Node test host the handle can keep the
+			// process alive after the suite finishes. Browsers return a number
+			// with no unref; Node returns one that has it.
+			(handle as unknown as { unref?: () => void }).unref?.();
+			return handle;
+		},
 		clearInterval: (h) => window.clearInterval(h as number),
 		setTimeout: (fn, ms) => window.setTimeout(fn, ms),
-		hasFocus: () => document.hasFocus(),
+		// Test DOMs (linkedom) and some embedded hosts have no document.hasFocus:
+		// treat an unknown focus state as focused rather than crashing the page.
+		hasFocus: () => typeof document.hasFocus === "function" ? document.hasFocus() : true,
 		randomId: () => crypto.randomUUID(),
 		send: (input) => postStudy(input),
 	});
