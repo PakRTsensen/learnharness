@@ -17,10 +17,13 @@ cp .env.example .env   # optional: uncomment provider keys
 docker compose up -d --build
 ```
 
-Open <http://localhost:3000>. Add provider keys either in `.env` before
-starting, or in **Settings → Providers** after the app boots. Keys entered in
-Settings are written to `auth.json` inside the data volume, so they survive
-rebuilds.
+Open <http://localhost:3000>. When using a domain or reverse proxy, also set
+`LH_ALLOWED_HOSTS=learn.example.com` in `.env` (replace it with your exact
+domain, without `https://`) and run `docker compose up -d`.
+
+Add provider keys either in `.env` before starting, or in **Settings →
+Providers** after the app boots. Keys entered in Settings are written to
+`auth.json` inside the data volume, so they survive rebuilds.
 
 ```bash
 docker compose logs -f        # follow logs
@@ -158,6 +161,7 @@ image explicitly (`docker compose build`) when you update the code.
 | `HOSTNAME` | `0.0.0.0` | Container listen address. |
 | `LH_DATA_DIR` | `/data` | All chats, graph ledgers, settings, jobs. |
 | `LH_AUTH_FILE` | `/data/auth.json` | BYOK key store (read/write by the server). |
+| `LH_ALLOWED_HOSTS` | — | Exact domain names accepted by the browser API; comma-separated, no protocol/port/path. Required behind a reverse proxy. |
 | `OPENROUTER_API_KEY` | — | Default LLM engine. |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, … | — | Other providers (see `src/core/auth-keys.ts`). |
 | `TAVILY_API_KEY` / `BRAVE_API_KEY` / `FIRECRAWL_API_KEY` | — | Optional web search. |
@@ -205,6 +209,13 @@ one.
 **Build runs out of memory.** `next build` is the memory-hungry step. Build on
 a machine with at least ~4 GB free (or add swap). The repo already disables the
 TypeScript checker during builds.
+
+**The page says “This page couldn’t load” and API requests return 403.** Check
+the response body. `This host name is not allowed` means the domain is missing
+from `LH_ALLOWED_HOSTS`. Set `LH_ALLOWED_HOSTS=learn.example.com` in `.env`
+(use your real domain, without `https://`), then run `docker compose up -d`.
+The API accepts localhost and IP addresses automatically, but deliberately
+blocks unlisted domain names to prevent DNS rebinding.
 
 **Container is unhealthy.** `docker compose logs app` shows the server output.
 The first boot needs up to ~45 s on a slow host; the healthcheck's

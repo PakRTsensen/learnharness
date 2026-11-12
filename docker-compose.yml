@@ -20,6 +20,8 @@ services:
       HOSTNAME: "0.0.0.0"
       LH_DATA_DIR: "/data"
       LH_AUTH_FILE: "/data/auth.json"
+      # Exact public host names accepted by the browser API gate.
+      LH_ALLOWED_HOSTS: "${LH_ALLOWED_HOSTS:-}"
     # Optional: copy .env.example to .env to pass provider keys from the
     # host environment. Keys added in Settings are stored in the volume.
     env_file:
