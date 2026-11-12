@@ -11,7 +11,7 @@
 * **Escalated:** 0.
 * **Declined:** 0.
 * **Remaining unaddressed issues from this report:** 0.
-* **Applied target:** `/root/learnharness-code/docs/designs/per-user-accounts.md`.
+* **Applied target:** `docs/designs/per-user-accounts.md`.
 * **Verification:** Re-read the remediated document; checked sequential headings, balanced fenced code blocks, implementation/test alignment, and removal of stale broker-era and uncalibrated wording. Archive compatibility is now decided; only numeric resource-limit defaults remain open for host measurement.
 
 ## Prioritized Findings & AI Suggestions

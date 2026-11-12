@@ -1,8 +1,11 @@
 # Per-User Accounts, Linux Ownership, and Portable Archives
 
 * **Author:** PakRTsensen
-* **Status:** In Review
+* **Status:** In Review — not approved for implementation
 * **Date:** 2026-11-12
+* **Implementation reference:** This is the authoritative design and phased implementation plan for AI-assisted implementation after final human approval. Read [Implementation Reference](../reviews/per-user-accounts/README.md) for its review state and supporting artifacts.
+
+> **Review gate:** The Stage 7 re-audit still has unresolved findings. Stages 8–9 have not run. Do not treat this document as an approved implementation specification until its status changes to Approved and all required review gates are complete.
 
 ---
 
