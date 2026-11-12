@@ -9,7 +9,8 @@ import { ServerEventsProvider } from "@/components/server-events";
 import { AppearanceProvider } from "@/components/settings/appearance";
 import UpdateBanner from "@/components/update-banner";
 import { PluginsProvider } from "@/components/plugins";
-import { readThemeBoot } from "@/src/server";
+import { defaultThemeBoot } from "@/src/core";
+import { parseDeploymentMode } from "@/src/multiuser";
 
 // Chrome = JetBrains Mono, teaching prose = Source Sans 3, titles = CMU
 // Serif (the bundled lh-cmu @font-face in globals.css — no CDN).
@@ -27,7 +28,21 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 	// record and the theme files are per-machine disk state — without it a
 	// prerendered route (settings) would bake the BUILD machine's record.
 	await connection();
-	const { appearance, theme, vars } = readThemeBoot();
+
+	// Deployment mode is explicit and fail-closed. A malformed selector is an
+	// error, never a silent fallback to the shared-storage composition.
+	const parsed = parseDeploymentMode();
+	if (!parsed.ok) throw new Error(parsed.message);
+	const multiuser = parsed.selection.mode === "multiuser-web";
+
+	// Multiuser auth pages must not touch the single-user settings record or
+	// custom theme files. The dynamic import keeps the store-backed theme
+	// module out of the multiuser render path (and out of its module graph).
+	const boot = multiuser
+		? defaultThemeBoot()
+		: (await import("@/src/server")).readThemeBoot();
+	const { appearance, theme, vars } = boot;
+
 	return (
 		<html
 			lang="en"
@@ -36,22 +51,34 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 			suppressHydrationWarning
 		>
 			<body className="min-h-dvh antialiased">
-			{/* The notification channel rides OUTSIDE everything: sidebar, dock,
-				 and pages all subscribe as the polls retire (push S3, 2026-10-02). */}
-			<ServerEventsProvider>
-				<PluginsProvider>
-					<AppearanceProvider initialAppearance={appearance} initialTheme={theme}>
-						<SidebarProvider>
-							<ActivityProvider>
-								<AppShell>{children}</AppShell>
-							</ActivityProvider>
-						</SidebarProvider>
-					</AppearanceProvider>
-				</PluginsProvider>
-			</ServerEventsProvider>
-			{/* Auto-update banner (Wave C): fixed card, Electron-only pushes. */}
-			<UpdateBanner />
-		</body>
+				{multiuser ? (
+					// Minimal auth shell: no sidebar, event streams, plugin host, or
+					// activity dock. Learning surfaces are gated until Phase 3, so
+					// mounting their providers here would only generate failing API
+					// polls against the shared-store surfaces they replace.
+					<div className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col justify-center px-6 py-12">
+						{children}
+					</div>
+				) : (
+					<>
+						{/* The notification channel rides OUTSIDE everything: sidebar, dock,
+							and pages all subscribe as the polls retire (push S3, 2026-10-02). */}
+						<ServerEventsProvider>
+							<PluginsProvider>
+								<AppearanceProvider initialAppearance={appearance} initialTheme={theme}>
+									<SidebarProvider>
+										<ActivityProvider>
+											<AppShell>{children}</AppShell>
+										</ActivityProvider>
+									</SidebarProvider>
+								</AppearanceProvider>
+							</PluginsProvider>
+						</ServerEventsProvider>
+						{/* Auto-update banner (Wave C): fixed card, Electron-only pushes. */}
+						<UpdateBanner />
+					</>
+				)}
+			</body>
 		</html>
 	);
 }

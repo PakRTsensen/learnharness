@@ -17,6 +17,18 @@ export * from "./commit-positions.ts";
 export * from "./jobs.ts";
 export { prepareSubmissionImages, prepareSubmissionImageChannels } from "./submission-images.ts";
 export * from "./stores.ts";
+// The request-scoped account relay contract (per-user accounts, Phase 2): the
+// session proof is carried here, but account authority only comes from a
+// controller record. Learning operations remain gated in multiuser-web until
+// the Phase 3 worker runtime exists.
+export {
+	accountContextFromController,
+	assertLearningRelayAvailable,
+	learningRouteRefusal,
+	RelayUnavailableError,
+	type AccountContext,
+	type AccountRelayOperation,
+} from "../accounts/request-context.ts";
 export { recordStudy, studyHistory } from "./study.ts";
 export { refreshWorkerRequestAdmission } from "../agent/worker-request-admission.ts";
 export { readRenderSettings, writeRenderSettings } from "../store/render-settings.ts";

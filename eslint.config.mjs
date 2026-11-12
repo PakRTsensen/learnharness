@@ -50,9 +50,18 @@ export default defineConfig([
 						{
 							target: "./app",
 							from: "./src",
-							except: ["./core/index.ts", "./server/index.ts"],
+							// `multiuser/index.ts` is the explicit multiuser relay barrel: it
+							// must not pull the single-user store composition, so auth/account
+							// routes cannot use the @/src/server barrel in that mode.
+							except: ["./core/index.ts", "./server/index.ts", "./multiuser/index.ts"],
 							message:
-								"app/ (transport + server components) imports ONLY the barrels: `@/src/core` and `@/src/server` (architecture: docs/architecture.md).",
+								"app/ (transport + server components) imports ONLY the barrels: `@/src/core`, `@/src/server`, and the gated `@/src/multiuser` (architecture: docs/architecture.md).",
+						},
+						{
+							target: "./src/multiuser",
+							from: ["./src/server", "./src/store", "./src/agent"],
+							message:
+								"The multiuser relay barrel must not pull single-user stores, server services, or agent code; account content belongs to the Phase 3 worker (architecture: docs/architecture.md).",
 						},
 						{
 							target: "./src/core",

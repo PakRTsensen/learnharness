@@ -22,6 +22,28 @@ services:
       LH_AUTH_FILE: "/data/auth.json"
       # Exact public host names accepted by the browser API gate.
       LH_ALLOWED_HOSTS: "${LH_ALLOWED_HOSTS:-}"
+      # Multiuser authentication is runtime-configured through .env
+      # (env_file above). See .env.example. Leave it unset for the historical
+      # single-user deployment. Milestone 1 exposes auth/account surfaces only:
+      # every learning route returns 503 until worker isolation lands.
+      #
+      # LH_DEPLOYMENT_MODE: "multiuser-web"
+      # LH_READ_ONLY_ROOT_FS: "1"
+      # LH_WRITABLE_MOUNTS: "/data"
+      # LH_ACCOUNT_ROOT: "/data/accounts"
+      # LH_CONTROLLER_STATE_DIR: "/data/controller"
+      # LH_STAGING_DIR: "/data/staging"
+      # LH_SNAPSHOT_DIR: "/data/snapshots"
+      # LH_PRIVATE_WORK_DIR: "/data/work"
+      # LH_AUTH_PROVIDER: "clerk"
+      # CLERK_ISSUER: "https://your-instance.clerk.accounts.dev"
+      # LH_APP_ORIGIN: "https://learn.example.com"
+      #
+      # A real multiuser deployment additionally needs a read-only root and a
+      # writable /tmp tmpfs; the root-helper mount model is Phase 3 work:
+      # read_only: true
+      # tmpfs:
+      #   - /tmp:size=1g,mode=1777
     # Optional: copy .env.example to .env to pass provider keys from the
     # host environment. Keys added in Settings are stored in the volume.
     env_file:

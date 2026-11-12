@@ -41,12 +41,16 @@ if (exists(path.join(ROOT, "public"))) {
 	copyTree(path.join(ROOT, "public"), path.join(STANDALONE, "public"));
 }
 
-// 2) Safety: the repo's real data/ must NEVER ride along in the bundle.
-const leakedData = path.join(STANDALONE, "data");
-if (exists(leakedData)) {
-	console.error("[build-server] REFUSING: standalone contains a data/ directory — repo session data would ship in the app.");
-	console.error("             Check outputFileTracingExcludes in next.config.ts.");
-	process.exit(1);
+// 2) Safety: mutable runtime/account state must NEVER ride along in the
+// bundle. data/ covers the historical single-user records; controller/,
+// accounts/, staging/ and snapshots/ cover an explicitly configured
+// multiuser deployment whose host paths happened to be traced.
+for (const leakedState of ["data", "controller", "accounts", "staging", "snapshots"]) {
+	if (exists(path.join(STANDALONE, leakedState))) {
+		console.error(`[build-server] REFUSING: standalone contains ${leakedState}/ — runtime data would ship in the app.`);
+		console.error("             Check outputFileTracingExcludes in next.config.ts and the payload curation below.");
+		process.exit(1);
+	}
 }
 
 // 2b) Safety: the repo's dev SECRETS must never ride along either — the
@@ -55,7 +59,18 @@ if (exists(leakedData)) {
 // the 2026-10-08 payload audit; excluded in next.config.ts — this guard
 // makes a regression loud instead of silent).
 const subscriptionSecrets = fs.readdirSync(STANDALONE).filter((name) => /^(chatgpt|github-copilot|xai)-credentials\.json/.test(name));
-for (const secret of ["auth.json", ...subscriptionSecrets, ".env", ".env.local"]) {
+for (const secret of [
+	"auth.json",
+	...subscriptionSecrets,
+	".env",
+	".env.local",
+	// Controller-owned state (per-user accounts, Phase 2): never package the
+	// registry, instance key/replay ledger, capability ledger, or bootstrap state.
+	"registry.json",
+	"instance.json",
+	"capabilities.json",
+	"bootstrap.json",
+]) {
 	if (exists(path.join(STANDALONE, secret))) {
 		console.error(`[build-server] REFUSING: standalone contains ${secret} — dev secrets would ship in the app.`);
 		console.error("             Check outputFileTracingExcludes in next.config.ts.");

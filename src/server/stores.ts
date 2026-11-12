@@ -4,8 +4,15 @@
  * the port types in core/ports.ts and receives instances through this
  * module. Swapping the fs adapter for SQLite later changes exactly this
  * file (and the adapter implementations in src/store/).
+ *
+ * MULTIUSER GATE (per-user accounts, Phase 1): this module is the
+ * single-account composition root. In multiuser-web it must not exist in the
+ * web process at all — account data belongs to an isolated worker. Importing
+ * it there is a deployment bug, so it fails loudly instead of exposing one
+ * shared store set to every signed-in user.
  */
 
+import { deploymentMode } from "../runtime/deployment-mode.ts";
 import { chatStore } from "../store/chats.ts";
 import { graphStore } from "../store/graph.ts";
 import { sourceOrganizationStore } from "../store/source-organization.ts";
@@ -16,6 +23,13 @@ import { themeStore } from "../store/themes.ts";
 import { resolveSettings, type EffectiveSettings } from "../core/settings-resolution.ts";
 import { syncCustomProvider } from "./custom-provider.ts";
 import { configureWorkerRequestAdmission } from "../agent/worker-request-admission.ts";
+
+if (deploymentMode() === "multiuser-web") {
+	throw new Error(
+		"Global account stores are unavailable in multiuser-web. Account data must be served by an isolated account worker.",
+	);
+}
+
 /** The wired adapters. Satisfies core/graph.ts's GraphDeps structurally. */
 export const stores = {
 	chatStore,

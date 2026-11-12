@@ -11,12 +11,16 @@ This reference describes the [repository source](README.md#about-these-docs). Se
 | `app/` | Pages and HTTP transport; `api/chat/route.ts`, `api/chats/` |
 | `components/` | Browser state and presentation; `session-core.ts`, `chat.tsx`, `graph-view.tsx` |
 | `src/server/` | Composition, admission, liveness, HTTP-facing services; `chat-handler.ts`, `jobs.ts`, `stores.ts` |
+| `src/runtime/` | Deployment-mode selection, multiuser runtime configuration, startup readiness |
+| `src/accounts/` | Account contracts and the request-scoped relay/session context |
+| `src/controller/` | Account registry, bootstrap, Clerk/local identity, session cookies, capabilities, controller protocol |
+| `src/multiuser/` | The gated multiuser relay barrel used by `app/`; it must not import single-user stores, server services, or agent code |
 | `src/agent/` | Agent construction, tools, provider streams, workers; `teacher-agent.ts`, `models.ts`, `tools.ts`, `subagents/` |
 | `src/core/` | Contracts, record/view projections, domain algorithms; `input-events.ts`, `native-messages.ts`, `view.ts`, `graph.ts` |
 | `src/store/` | Filesystem adapters for chats, jobs, graph, settings, and credentials |
 | `electron/` | Desktop launch, navigation/permission guards, credential transport, browser helper, updater |
 
-[`eslint.config.mjs`](../eslint.config.mjs) restricts shell imports into `src/` to the core/server barrels, prevents core imports from IO layers, and prevents agents importing server/store adapters. Dependencies arrive through injected contexts/ports. These rules are not a proof of pure core, one composition root, or one writer per store: some core modules are Node-bound and excluded from the browser barrel; server modules can import adapters. Scripts, Electron, and tests are outside these zones.
+[`eslint.config.mjs`](../eslint.config.mjs) restricts shell imports into `src/` to the core/server barrels and, for multiuser auth/account transport, the gated `src/multiuser` barrel; the barrel itself may not pull single-user stores, server services, or agent code. Core cannot import IO layers, and agents cannot import server/store adapters. Dependencies arrive through injected contexts/ports. These rules are not a proof of pure core, one composition root, or one writer per store: some core modules are Node-bound and excluded from the browser barrel; server modules can import adapters. Scripts, Electron, and tests are outside these zones.
 
 ## Conversations and turns
 
@@ -162,6 +166,21 @@ Adapters use synchronous filesystem operations. JSONL reads skip corrupt/invalid
 Chats and graph-family files have separate version guards; absent stamps read as v1, and newer versions are refused. Positions are rebuildable and unstamped. Settings have their own version/sanitization policy. Format counters are not app versions. Golden fixtures exercise compatibility. Graph-store initialization removes retired ledgers, so importing stores is not a universally read-only inspection method.
 
 `/api/chats/:id/stream` is a turn/view stream. `/api/events` is a separate window-level notification stream: an ephemeral, process-local signal to fetch canonical data. [`SERVER_EVENT_TYPES`](../src/core/events.ts) is the event vocabulary. Consumers debounce and refetch on reconnect; notifications have no durable replay. A live turn's terminal controls settlement adoption so a notification fetch does not overwrite partial state. Settlement signals the end of work, not proof of a successful disk write.
+
+## Accounts and authentication (Milestone 1)
+
+Deployment mode is explicit, never inferred from the presence of Clerk variables. `LH_DEPLOYMENT_MODE=multiuser-web` selects the new composition root; unset keeps the historical single-user web app, and the Electron launch marker keeps desktop. An invalid selector fails closed (`src/runtime/deployment-mode.ts`).
+
+Multiuser startup validates host paths, a non-overlapping UID/GID range, a read-only-root declaration, designated writable mounts, admission limits, and a runtime auth configuration (`src/runtime/multiuser-config.ts`, `readiness.ts`). Missing mandatory controls throw instead of falling back to shared storage. The ownership/mode checks on the account root are advisories in this milestone and become mandatory with the Phase 3 root helper.
+
+Identity has two providers behind one session shape:
+
+- **local** — the offline/development simulation. `/api/auth/session` mints an HS256 cookie from an email; no password and no network. It is refused in production unless `LH_ALLOW_LOCAL_AUTH=1`.
+- **Clerk** — `/api/auth/clerk` verifies a Clerk session token against the runtime issuer/JWKS (`src/controller/clerk-identity.ts`), then mints the same short-lived application cookie. No Clerk secret or `NEXT_PUBLIC_*` value is baked into the build. The token is never stored in the browser.
+
+`src/controller/registry.ts` is the sole writer of the account registry: random internal IDs, serialized allocation, a permanent UID/GID non-reuse ledger, lifecycle state, and exactly one administrator/legacy-claim holder. The first-administrator bootstrap is one atomic registry transaction gated by a host-issued secret; failure commits nothing and success consumes it (`src/controller/provisioning.ts`). Verified Clerk deletion webhooks only start disablement; user-confirmed deletion keeps a seven-day recovery window before the registry record is retired. Capabilities (`capabilities.ts`) and the length-bounded controller protocol (`protocol.ts`) are the tested primitives the Phase 3 controller/helper boundary will use.
+
+**Milestone 1 gate.** The web process does not own account storage. `src/server/stores.ts` throws if imported in multiuser-web, the root layout renders a minimal auth shell (factory theme, no event/plugin polls), and `proxy.ts` permits only sign-in/up, bootstrap, account lifecycle, and the verified webhook. Every learning route returns `503 worker_runtime_unavailable`. This is intentionally not a claim of Linux isolation: chats, graph, files, plugins, jobs, and per-account processes arrive with the Phase 3–7 worker/archive work.
 
 ## Host and providers
 

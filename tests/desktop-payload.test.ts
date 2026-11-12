@@ -193,6 +193,17 @@ describe("desktop standalone payload", () => {
 		}
 	});
 
+	it("refuses leaked controller/account state", () => {
+		for (const leaked of ["controller/registry.json", "registry.json", "instance.json", "capabilities.json"]) {
+			withPayload(({ write, run }) => {
+				write(path.join(STANDALONE, leaked));
+				const result = run();
+				assert.equal(result.status, 1, leaked);
+				assert.match(String(result.stderr), /REFUSING/);
+			});
+		}
+	});
+
 	it("refuses user data accidentally placed inside a Core plugin", () => {
 		withPayload(({ write, run }) => {
 			write(path.join("core-plugins", "flashcards", "data", "private.json"));

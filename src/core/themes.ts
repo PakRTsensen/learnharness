@@ -283,6 +283,25 @@ export function themeVars(c: ThemeColors, mode: ThemeMode): Record<string, strin
 	};
 }
 
+/**
+ * THE MULTIUSER AUTH SHELL'S FIRST PAINT (per-user accounts, Phase 2).
+ *
+ * Sign-in/bootstrap/account pages must not read the single-user settings
+ * record or any custom theme file: those are shared-storage artifacts and
+ * are unavailable in the multiuser-web composition root. This is the pure
+ * factory default the minimal auth shell renders before any account exists.
+ */
+export interface DefaultThemeBoot {
+	appearance: undefined;
+	theme: Theme;
+	vars: Record<string, string>;
+}
+
+export function defaultThemeBoot(): DefaultThemeBoot {
+	const theme = resolveTheme(undefined, []);
+	return { appearance: undefined, theme, vars: themeVars(effectiveColors(theme, undefined), theme.mode) };
+}
+
 /** Export: the active theme with every override applied — importing the
  *  file back reproduces exactly what is on screen. */
 export function exportThemeFile(theme: ThemeFile, appearance: AppearanceSettings | undefined): ThemeFile {

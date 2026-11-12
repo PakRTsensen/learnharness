@@ -4,11 +4,16 @@ LearnHarness ships a multi-stage `Dockerfile` and a `docker-compose.yml` for a
 self-hosted web deployment. The image runs the Next.js **standalone** server
 (`node server.js`) as the unprivileged `node` user.
 
-> **Access control is your job.** LearnHarness has no user accounts. Its own
-> [development guide](development.md#subscription-connections-in-webdev) says a
-> public deployment needs an independent access gate. Put it behind a reverse
-> proxy with authentication (Basic Auth, Authelia, Cloudflare Access, …), a
-> VPN, or a private network — never expose port 3000 directly to the Internet.
+> **Single-user by default.** The default deployment has no user accounts.
+> Put it behind a reverse proxy with authentication (Basic Auth, Authelia,
+> Cloudflare Access, …), a VPN, or a private network — never expose port 3000
+> directly to the Internet.
+>
+> An explicit `multiuser-web` composition (Milestone 1) adds Clerk identity
+> verification or an offline local provider, a first-administrator bootstrap,
+> and an account registry. It is **not** a complete isolation boundary yet:
+> learning routes stay disabled until the per-account Linux worker runtime
+> (Phase 3) lands. Authentication alone is not filesystem isolation.
 
 ## Quick start
 
@@ -72,6 +77,50 @@ docker run -d --name learnharness \
 
 To do that from Compose, replace the `build:` block in `docker-compose.yml` with
 `image: registry.example.com/learnharness:0.6.1`.
+
+## Multiuser authentication (Milestone 1)
+
+Set `LH_DEPLOYMENT_MODE=multiuser-web` explicitly. Configuration is read at
+runtime from the container environment; no Clerk publishable key is baked into
+the image and there is no `NEXT_PUBLIC_*` requirement. Startup is fail-closed:
+missing read-only-root/mount declarations or an incomplete auth configuration
+leave the server unavailable instead of falling back to shared storage.
+
+```dotenv
+LH_DEPLOYMENT_MODE=multiuser-web
+LH_READ_ONLY_ROOT_FS=1
+LH_WRITABLE_MOUNTS=/data
+LH_ACCOUNT_ROOT=/data/accounts
+LH_CONTROLLER_STATE_DIR=/data/controller
+LH_STAGING_DIR=/data/staging
+LH_SNAPSHOT_DIR=/data/snapshots
+LH_PRIVATE_WORK_DIR=/data/work
+```
+
+Choose one provider:
+
+- **Offline/local simulation** (no network, no Clerk account): set
+  `LH_AUTH_PROVIDER=local`, `LH_LOCAL_AUTH_SECRET` (32+ random characters),
+  and `LH_BOOTSTRAP_SECRET` (or `LH_BOOTSTRAP_SECRET_FILE`). In production also
+  set `LH_ALLOW_LOCAL_AUTH=1`; the provider is intentionally refused otherwise.
+- **Clerk**: set `LH_AUTH_PROVIDER=clerk`, `LH_SESSION_SECRET`, `CLERK_ISSUER`,
+  `LH_APP_ORIGIN`, and optionally `CLERK_JWKS_URL`, `CLERK_AUDIENCE`,
+  `CLERK_AUTHORIZED_PARTIES`, `CLERK_SESSION_COOKIE`, `CLERK_SIGN_IN_URL`,
+  `CLERK_SIGN_UP_URL`, and `CLERK_WEBHOOK_SECRET`. Session tokens are verified
+  against the runtime JWKS; `user.deleted` webhooks only start disablement.
+
+The first signed-in person opens `/first-admin` and submits the host-issued
+secret once. Success commits the administrator, UID/GID allocation, and private
+account directory in one transaction, permanently consumes the secret, and
+opens ordinary registration. Wrong/failed attempts commit nothing and can be
+retried while no account exists.
+
+**Milestone 1 gate.** Only `/sign-in`, `/sign-up`, `/first-admin`, `/account`,
+their APIs, and the verified Clerk webhook are reachable. Every learning route
+(chat, graph, files, settings, plugins, jobs, events) returns `503` with
+`worker_runtime_unavailable`. The default entrypoint currently creates the
+runtime directories as `node`; Phase 3 replaces that transitional ownership
+with per-account Linux identities and the root helper.
 
 ## What persists
 
@@ -162,6 +211,20 @@ image explicitly (`docker compose build`) when you update the code.
 | `LH_DATA_DIR` | `/data` | All chats, graph ledgers, settings, jobs. |
 | `LH_AUTH_FILE` | `/data/auth.json` | BYOK key store (read/write by the server). |
 | `LH_ALLOWED_HOSTS` | — | Exact domain names accepted by the browser API; comma-separated, no protocol/port/path. Required behind a reverse proxy. |
+| `LH_DEPLOYMENT_MODE` | unset | `multiuser-web` selects the explicit authentication/account composition. Any other value fails closed. |
+| `LH_AUTH_PROVIDER` | `clerk` | Multiuser identity provider: `clerk` (runtime issuer/JWKS verification) or `local` (offline simulation). |
+| `LH_ALLOW_LOCAL_AUTH` | — | `1` permits the local provider when `NODE_ENV=production`. |
+| `LH_LOCAL_AUTH_SECRET` | — | 32–512 character HS256 session secret for the local provider. |
+| `LH_SESSION_SECRET` | — | 32–512 character app-session secret; required for Clerk mode. |
+| `CLERK_ISSUER` | — | Exact Clerk issuer URL; its `/.well-known/jwks.json` is the default JWKS URL. |
+| `LH_APP_ORIGIN` | — | Public HTTPS origin of this installation; also an accepted Clerk `azp` party. |
+| `LH_BOOTSTRAP_SECRET` / `LH_BOOTSTRAP_SECRET_FILE` | — | Single-commit first-administrator secret (32–512 characters). The environment value wins over the file. |
+| `LH_READ_ONLY_ROOT_FS` | — | `1` is mandatory in multiuser mode. |
+| `LH_WRITABLE_MOUNTS` | — | Comma-separated designated writable mounts; every runtime path must be inside one. |
+| `LH_ACCOUNT_ROOT`, `LH_CONTROLLER_STATE_DIR`, `LH_STAGING_DIR`, `LH_SNAPSHOT_DIR`, `LH_PRIVATE_WORK_DIR` | `/data/...` | Host paths for the account root, controller registry, upload staging, snapshots, and private work. |
+| `LH_UID_RANGE_START` / `LH_UID_RANGE_END`, `LH_GID_RANGE_START` / `LH_GID_RANGE_END` | `200000`–`200999` | Non-reused per-account identity range. |
+| `LH_SESSION_TTL_SECONDS` | `43200` | Application session lifetime (300–604800). |
+| `LH_MAX_ACTIVE_ACCOUNTS`, `LH_MAX_ACTIVE_WORKERS`, `LH_MAX_STREAMS`, `LH_MAX_ARCHIVE_JOBS`, `LH_MAX_PROVIDER_CONNECTIONS`, `LH_MAX_TEMPORARY_BYTES` | see `.env.example` | Admission/resource groundwork; enforcement lands with the worker/resource phases. |
 | `OPENROUTER_API_KEY` | — | Default LLM engine. |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, … | — | Other providers (see `src/core/auth-keys.ts`). |
 | `TAVILY_API_KEY` / `BRAVE_API_KEY` / `FIRECRAWL_API_KEY` | — | Optional web search. |

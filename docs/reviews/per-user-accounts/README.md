@@ -27,5 +27,8 @@ An AI implementation session should read that document first, then inspect the f
 | `critic_report.md` | Current Stage 7 re-audit findings. |
 | `goldfish_review_report.md` | Current Stage 7 resolution proposal, pending human approval. |
 | `2026-11-12_DRIFT_REPORT.md` | Point-in-time comparison of the earlier design and current implementation; not a current implementation checklist. |
+| `IMPLEMENTATION_PROGRESS.md` | Milestone 1 (Phases 1–2) execution ledger: delivered files, verification, deviations, and the outstanding Phase 3+ gates. |
 
 Stages 8 and 9 have not yet produced reports. Until the primary design is marked Approved and the required gates are complete, implementation work must remain limited to investigation and planning.
+
+**Milestone 1 implementation status:** Phases 1–2 are implemented on this branch with passing focused tests and typecheck; see [`IMPLEMENTATION_PROGRESS.md`](IMPLEMENTATION_PROGRESS.md). The primary design document's status is unchanged: this does not mark it Approved, and Phases 3–8 have not run.

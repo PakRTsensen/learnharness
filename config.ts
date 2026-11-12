@@ -165,3 +165,29 @@ export const THEMES_DIR = path.join(/* turbopackIgnore: true */ DATA_ROOT, "them
 export const AUTH_FILE = process.env.LH_AUTH_FILE
 	? path.resolve(/* turbopackIgnore: true */ process.env.LH_AUTH_FILE)
 	: path.join(/* turbopackIgnore: true */ ROOT, "auth.json");
+
+/**
+ * MULTIUSER RUNTIME PATHS (per-user accounts, Phase 1, 2026-11-12).
+ *
+ * These are HOST-OPERATOR paths, never account-controlled values. They are
+ * configured by the Docker host at runtime and validated by
+ * src/runtime/multiuser-config.ts before a multiuser process may start.
+ *
+ * In single-user/desktop modes they are inert: the existing DATA_ROOT paths
+ * above remain the one composition root. In multiuser mode the controller
+ * owns the registry/ledger under LH_CONTROLLER_STATE_DIR, the root helper owns
+ * the account root, and uploads/snapshots/private work have their own mounts.
+ * Only an absolute host value replaces the data-root default; relative values
+ * are rejected by the validator (they would resolve against an account cwd).
+ */
+function hostPath(value: string | undefined, fallback: string): string {
+	return value ? path.resolve(/* turbopackIgnore: true */ value) : path.join(/* turbopackIgnore: true */ fallback);
+}
+
+export const RUNTIME_PATHS = {
+	controllerState: hostPath(process.env.LH_CONTROLLER_STATE_DIR, path.join(/* turbopackIgnore: true */ DATA_ROOT, "controller")),
+	accountRoot: hostPath(process.env.LH_ACCOUNT_ROOT, path.join(/* turbopackIgnore: true */ DATA_ROOT, "accounts")),
+	staging: hostPath(process.env.LH_STAGING_DIR, path.join(/* turbopackIgnore: true */ DATA_ROOT, "staging")),
+	snapshots: hostPath(process.env.LH_SNAPSHOT_DIR, path.join(/* turbopackIgnore: true */ DATA_ROOT, "snapshots")),
+	privateWork: hostPath(process.env.LH_PRIVATE_WORK_DIR, path.join(/* turbopackIgnore: true */ DATA_ROOT, "work")),
+} as const;

@@ -71,8 +71,12 @@ in the `learnharness-data` volume. The default image is server-only (no
 Chromium); set `WITH_CHROMIUM=1` at build time to enable demo-builder browser
 verification.
 
-LearnHarness has no user accounts — put a reverse proxy with authentication or
-a VPN in front of it. See the [Docker guide](docs/docker.md) for configuration,
+The default single-user deployment has no user accounts — put a reverse proxy
+with authentication or a VPN in front of it. An explicit `multiuser-web`
+Milestone 1 composition adds Clerk verification or an offline local provider, a
+first-administrator bootstrap, and an account registry, but learning routes
+remain disabled until per-account Linux worker isolation lands; authentication
+alone is not isolation. See the [Docker guide](docs/docker.md) for configuration,
 backups, auto-start and troubleshooting.
 
 ## Your keys, your data
