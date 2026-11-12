@@ -12,6 +12,7 @@
 ## Development and maintenance
 
 - [Development](development.md) — setup, configuration, safe local work, debugging, and checks.
+- [Docker deployment](docker.md) — self-host the web app, build the image, persist data, and autostart.
 - [Architecture](architecture.md) — runtime flows, storage, and integration boundaries.
 - [Prompt composition](../src/agent/prompts/README.md) — source fragments and user overrides.
 - [Tool-content recovery](tool-content-recovery.md) — display-only recovery of model-authored escaping defects.

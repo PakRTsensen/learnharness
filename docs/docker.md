@@ -28,6 +28,48 @@ docker compose ps             # health/status
 docker compose down           # stop (the volume is kept)
 ```
 
+## Building the image
+
+Compose builds automatically on `up --build`. To build explicitly (or on a
+machine that only builds, then ships the image elsewhere):
+
+```bash
+# Plain build (server-only, no Chromium)
+docker build -t learnharness:latest .
+
+# With the demo-builder's browser verification
+docker build --build-arg WITH_CHROMIUM=1 -t learnharness:latest .
+
+# Smaller build cache / no provenance attestation
+docker build --provenance=false -t learnharness:latest .
+```
+
+The build is self-gating: it fails instead of producing a broken image if the
+provider runtime, the payload curation or the boot smoke test regresses. Expect
+roughly 5–10 minutes on a 2-core machine and ~2 GB of scratch disk during the
+Next.js build.
+
+Tag for a registry and push:
+
+```bash
+docker tag learnharness:latest registry.example.com/learnharness:0.6.1
+docker push registry.example.com/learnharness:0.6.1
+```
+
+Then on the server, run the published image instead of building:
+
+```bash
+docker run -d --name learnharness \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  -v learnharness-data:/data \
+  -e OPENROUTER_API_KEY=sk-or-... \
+  registry.example.com/learnharness:0.6.1
+```
+
+To do that from Compose, replace the `build:` block in `docker-compose.yml` with
+`image: registry.example.com/learnharness:0.6.1`.
+
 ## What persists
 
 All mutable state lives under `LH_DATA_DIR=/data`, backed by the

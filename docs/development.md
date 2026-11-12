@@ -32,6 +32,8 @@ npm start              # serve the production build with Next
 
 `npm run desktop:dist` is the local **signed macOS** packaging path, not a portable unsigned shortcut. Prerequisites and Windows/Linux instructions are in [Desktop builds and releases](desktop-release.md).
 
+For a server deployment, the repository also ships a `Dockerfile` and `docker-compose.yml` that run the same standalone build as a minimal, unprivileged container. See [Docker deployment](docker.md) for building the image, persisting the data directory, autostart and the reverse-proxy requirement.
+
 ### Other devices on your network
 
 `npm run dev`, `npm start`, and `desktop:dev` listen on `localhost` only. Browser-only mode has **no login**: anyone who can reach the port can read every chat and setting, change saved keys, and start agent turns. To open it from another device on a network you trust, pass a later host flag:
