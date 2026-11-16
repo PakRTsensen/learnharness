@@ -5,7 +5,7 @@
  * local servers work via a placeholder key resolved at request time.
  */
 
-import { createProvider, type Api, type Model, type Provider } from "@earendil-works/pi-ai";
+import { createProvider, type Api, type Model, type Provider, type ThinkingLevelMap } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { configureProviderSource, piModels } from "../agent/models.ts";
 import { readSettings } from "../store/settings.ts";
@@ -68,6 +68,8 @@ function toPiModel(
 	overrides: Record<string, CustomModelOverride>,
 ): Model<Api> {
 	const pin = overrides[model.id];
+	const reasoning = pin?.reasoning ?? Boolean(model.reasoning);
+	const thinkingLevelMap = reasoning ? thinkingLevelMapFor(model) : undefined;
 	return {
 		id: model.id,
 		name: model.id,
@@ -76,15 +78,60 @@ function toPiModel(
 		baseUrl,
 		// Pin wins; else detected from the endpoint's metadata (see
 		// detectReasoning). true makes pi-ai offer the standard levels and send
-		// reasoning_effort on the wire; no thinkingLevelMap → the default
-		// off/minimal/low/medium/high set.
-		reasoning: pin?.reasoning ?? Boolean(model.reasoning),
+		// reasoning_effort on the wire; a declared level set replaces that
+		// standard set with exactly the endpoint's own.
+		reasoning,
+		...(thinkingLevelMap ? { thinkingLevelMap } : {}),
+		// A declared level contract means the endpoint accepts the effort
+		// parameter even when the URL looks like a backend pi-ai knows as
+		// non-effort (z.ai, Moonshot, …). Metadata beats URL heuristics.
+		...(thinkingLevelMap ? { compat: { supportsReasoningEffort: true } } : {}),
 		input: model.image ? ["text", "image"] : ["text"],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow: pin?.context ?? model.context ?? CUSTOM_MODEL_DEFAULT_CONTEXT_WINDOW,
 		maxTokens: pin?.maxTokens ?? model.maxTokens ?? CUSTOM_MODEL_DEFAULT_MAX_TOKENS,
 		type: "chat",
 	};
+}
+
+/** The endpoint's declared reasoning vocabulary → pi-ai's fixed scale.
+ *  `thinking` is the binary gate some servers publish (zai/minimax): one on
+ *  level, mapped to High. `ultra` has no pi level and collapses to max. */
+const DECLARED_THINKING_LEVELS: Readonly<Record<string, { level: keyof ThinkingLevelMap; wire: string }>> = {
+	none: { level: "off", wire: "none" },
+	off: { level: "off", wire: "none" },
+	disabled: { level: "off", wire: "none" },
+	thinking: { level: "high", wire: "high" },
+	on: { level: "high", wire: "high" },
+	enabled: { level: "high", wire: "high" },
+	minimum: { level: "minimal", wire: "minimal" },
+	minimal: { level: "minimal", wire: "minimal" },
+	low: { level: "low", wire: "low" },
+	med: { level: "medium", wire: "medium" },
+	medium: { level: "medium", wire: "medium" },
+	high: { level: "high", wire: "high" },
+	xhigh: { level: "xhigh", wire: "xhigh" },
+	"extra-high": { level: "xhigh", wire: "xhigh" },
+	max: { level: "max", wire: "max" },
+	maximum: { level: "max", wire: "max" },
+	ultra: { level: "max", wire: "max" },
+};
+
+/** The picker set is exactly what the endpoint declared: every pi level is
+ *  first marked unsupported, then declared ones are mapped to their wire
+ *  value. Off is a real request (reasoning_effort "none") only when the
+ *  endpoint says thinking can be disabled — otherwise it stays hidden and
+ *  the stored "off" clamps up honestly. Undefined → pi-ai's standard set. */
+function thinkingLevelMapFor(model: CustomModel): ThinkingLevelMap | undefined {
+	const declared = model.thinkingLevels;
+	if (!declared?.length) return undefined;
+	const map: ThinkingLevelMap = { off: null, minimal: null, low: null, medium: null, high: null, xhigh: null, max: null };
+	for (const raw of declared) {
+		const entry = DECLARED_THINKING_LEVELS[raw];
+		if (entry) map[entry.level] = entry.wire;
+	}
+	if (map.off === "none" && model.thinkingCanDisable === false) map.off = null;
+	return map;
 }
 
 /** Build an OpenAI-compatible provider from parts. baseUrl must be normalized. */
@@ -178,6 +225,10 @@ function modelRows(body: unknown): unknown[] | null {
  *  capability fields; absent or unrecognized → false (text-only). */
 function detectImage(row: Record<string, unknown>): boolean {
 	const architecture = isRecord(row.architecture) ? row.architecture : undefined;
+	const capabilities = isRecord(row.capabilities) ? row.capabilities : undefined;
+	// 9router and several gateways declare capabilities as an object of
+	// booleans (`vision: true`), not the string list older servers publish.
+	if (capabilities?.vision === true || capabilities?.imageInput === true) return true;
 	const candidates = [
 		architecture?.input_modalities,
 		row.input_modalities,
@@ -201,6 +252,9 @@ function detectReasoning(row: Record<string, unknown>): boolean {
 	for (const key of ["reasoning", "supports_reasoning", "thinking"] as const) {
 		if (row[key] === true) return true;
 	}
+	// Object-shaped capability blocks (9router: capabilities.reasoning) are
+	// the modern spelling; the list scan below only handles arrays.
+	if (isRecord(row.capabilities) && row.capabilities.reasoning === true) return true;
 	const architecture = isRecord(row.architecture) ? row.architecture : undefined;
 	const candidates = [row.supported_parameters, row.capabilities, row.tags, architecture?.output_modalities];
 	return candidates.some(
@@ -222,11 +276,28 @@ function firstPositive(row: Record<string, unknown>, keys: readonly string[]): n
 
 // Field names seen in the wild for each limit (first present wins).
 const CONTEXT_KEYS = ["max_input_tokens", "context_length", "context_window", "max_context", "n_ctx", "max_seq_len", "max_position_embeddings"] as const;
-const MAX_TOKEN_KEYS = ["max_output_tokens"] as const;
+const MAX_TOKEN_KEYS = ["max_output_tokens", "max_completion_tokens"] as const;
+// 9router (and gateways that mirror its schema) mirror the same limits inside
+// the camelCase capability block. Top-level stays authoritative; the nested
+// copy is the fallback, never a competing truth.
+const CAPABILITY_CONTEXT_KEYS = ["contextWindow"] as const;
+const CAPABILITY_MAX_TOKEN_KEYS = ["maxOutput"] as const;
 // llama.cpp's llama-server nests the runtime context (per slot) under `meta`.
 // Its sibling `n_ctx_train` is the model's training maximum, not what the
 // server accepts, so it is deliberately not read.
 const META_CONTEXT_KEYS = ["n_ctx"] as const;
+
+/** The declared reasoning levels, verbatim (trimmed, lowercased, unique). */
+function declaredThinkingLevels(raw: unknown): string[] | undefined {
+	if (!Array.isArray(raw)) return undefined;
+	const out: string[] = [];
+	for (const value of raw) {
+		if (typeof value !== "string") continue;
+		const level = value.trim().toLowerCase();
+		if (level && !out.includes(level)) out.push(level);
+	}
+	return out.length ? out : undefined;
+}
 
 /** Pull models from a list response (objects with `id` or bare strings), each
  *  with detected image + token limits. Null if the shape is unrecognized. */
@@ -242,14 +313,24 @@ function extractModels(body: unknown): CustomModel[] | null {
 		}
 		if (isRecord(row) && typeof row.id === "string" && row.id.trim()) {
 			const model: CustomModel = { id: row.id };
+			const capabilities = isRecord(row.capabilities) ? row.capabilities : undefined;
 			if (detectImage(row)) model.image = true;
 			if (detectReasoning(row)) model.reasoning = true;
 			const context =
 				firstPositive(row, CONTEXT_KEYS) ??
+				(capabilities ? firstPositive(capabilities, CAPABILITY_CONTEXT_KEYS) : undefined) ??
 				(isRecord(row.meta) ? firstPositive(row.meta, META_CONTEXT_KEYS) : undefined);
 			if (context) model.context = context;
-			const maxTokens = firstPositive(row, MAX_TOKEN_KEYS);
+			const maxTokens =
+				firstPositive(row, MAX_TOKEN_KEYS) ??
+				(capabilities ? firstPositive(capabilities, CAPABILITY_MAX_TOKEN_KEYS) : undefined);
 			if (maxTokens) model.maxTokens = maxTokens;
+			// The endpoint's own level contract: pi-ai will offer exactly this
+			// set instead of its standard one, so a max-only model stops
+			// capping the picker at high.
+			const thinkingLevels = declaredThinkingLevels(row.thinking_levels);
+			if (thinkingLevels) model.thinkingLevels = thinkingLevels;
+			if (typeof capabilities?.thinkingCanDisable === "boolean") model.thinkingCanDisable = capabilities.thinkingCanDisable;
 			byId.set(row.id, model);
 		}
 	}

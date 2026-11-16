@@ -1042,7 +1042,7 @@ function CustomEndpointEditor({
 			)}
 			<div className="flex flex-col gap-1 text-[11px] text-muted-foreground" data-testid="custom-help">
 				{!setup && models.length > 0 && <p data-testid="custom-budget-help">Budget pins do not resize backend context. Blank uses reported limits, then fallback (8192 context / 4096 output). Custom pricing is unknown.</p>}
-				<p data-testid="custom-reasoning-help">Reasoning support is a capability declaration. The effort picker’s Off may not disable a custom backend’s default thinking.</p>
+				<p data-testid="custom-reasoning-help">Reasoning support and the effort list come from the endpoint’s reported levels. When it reports thinking can be disabled, Off sends its disable signal instead of relying on the backend’s default.</p>
 			</div>
 			{(error || pinsError) && <button type="button" data-testid="custom-reload" onClick={() => void onReload()} className="text-left text-xs underline">Reload configuration</button>}
 			{error && (

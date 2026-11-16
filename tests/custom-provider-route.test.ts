@@ -127,4 +127,19 @@ describe("POST /api/custom-provider — typed ids and a failed probe", () => {
 		assert.deepEqual(cp?.overrides, { "disc-1": { context: 200000 } }, "pins follow the ids this connect offers");
 		assert.deepEqual(cp?.manualModels, ["disc-1", "m2"]);
 	});
+
+	it("accepts the weak ETag a compressing proxy forwards", async () => {
+		seed(CONNECTED);
+		answerWith(200, "OK", { data: [{ id: "disc-1" }] });
+		const strong = route.GET(new Request("http://localhost/api/custom-provider")).headers.get("etag")!;
+
+		const res = await route.POST(
+			new Request("http://localhost/api/custom-provider", {
+				method: "POST",
+				headers: { "content-type": "application/json", origin: "http://localhost", "if-match": `W/${strong}` },
+				body: JSON.stringify({ baseUrl: BASE, authMode: "keyless" }),
+			}),
+		);
+		assert.equal(res.status, 200);
+	});
 });
