@@ -1,5 +1,5 @@
 import { IMPORT_EXTENSIONS, MAX_IMPORT_BYTES, validNotesPath } from "@/lib/notes-import-limits";
-import type { NotesImportResult } from "./notes-import";
+import type { NotesImportResult, NotesImportOptions } from "./notes-import";
 
 export const notesPath = (file: File): string => file.webkitRelativePath || file.name;
 /** Folder imports silently exclude dot-prefixed files and directories below
@@ -26,7 +26,7 @@ export const EMPTY_IMPORT_QUEUE: ImportQueueSnapshot = { importing: false, error
 /** PR198's refill-on-completion, one-request-per-file transport, extended to
  * accept later selections. One instance per page, NOT three workers per click.
  * Only pending/in-flight Files are retained; no retry or persisted upload queue. */
-export function createNotesImportQueue(post: (files: readonly File[]) => Promise<NotesImportResult[]>) {
+export function createNotesImportQueue(post: (files: readonly File[], options?: NotesImportOptions) => Promise<NotesImportResult[]>, options: NotesImportOptions = {}) {
 	const listeners = new Set<() => void>();
 	const pending: { file: File; index: number }[] = [];
 	const failures = new Map<number, string>();
@@ -39,7 +39,7 @@ export function createNotesImportQueue(post: (files: readonly File[]) => Promise
 		for (const listener of [...listeners]) listener();
 	};
 	// Normalize a synchronously throwing transport to the same async settlement.
-	const send = async (file: File) => post([file]);
+	const send = async (file: File) => post([file], options);
 	function pump(): void {
 		while (active < 3 && pending.length > 0) {
 			const { file, index } = pending.shift()!;

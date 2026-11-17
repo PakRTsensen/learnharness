@@ -47,12 +47,22 @@ export function parseNotesImportResults(body: unknown, files: readonly File[]): 
 	return body.results as NotesImportResult[];
 }
 
-export async function postNotesImport(files: readonly File[]): Promise<NotesImportResult[]> {
+/** Per-import options (issue #6): the chunk budget re-batches the remaining
+ *  stretches and never invalidates a checkpoint; force re-extracts a file the
+ *  ledger already covers. Resume is the default. */
+export interface NotesImportOptions {
+	chunkTokens?: number;
+	force?: boolean;
+}
+
+export async function postNotesImport(files: readonly File[], options: NotesImportOptions = {}): Promise<NotesImportResult[]> {
 	const form = new FormData();
 	for (const file of files) {
 		form.append("files", file);
 		form.append("paths", notesPath(file));
 	}
+	if (options.chunkTokens !== undefined) form.append("chunkTokens", String(options.chunkTokens));
+	if (options.force) form.append("force", "true");
 	const response = await fetch("/api/graph/import", { method: "POST", body: form });
 	let body: unknown;
 	try { body = await response.json(); }
