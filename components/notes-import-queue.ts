@@ -1,5 +1,5 @@
 import { IMPORT_EXTENSIONS, MAX_IMPORT_BYTES, validNotesPath } from "@/lib/notes-import-limits";
-import type { NotesImportResult } from "./notes-import";
+import type { NotesImportResult, NotesImportOptions } from "./notes-import";
 
 export const notesPath = (file: File): string => file.webkitRelativePath || file.name;
 /** Folder imports silently exclude dot-prefixed files and directories below
