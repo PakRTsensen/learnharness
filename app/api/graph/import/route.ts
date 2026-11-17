@@ -25,7 +25,7 @@
 import { convertPdf, extraction, joinPages, notesImportInput, NotesImportError, sourceDirectory, type NotesImportInput } from "@/src/server";
 import { IMPORT_EXTENSIONS, MAX_IMPORT_BODY_BYTES, MAX_IMPORT_BYTES, UNSUPPORTED_TYPE_MESSAGE, validNotesPath } from "@/lib/notes-import-limits.ts";
 import { FormBodyLimitError, readBoundedFormData } from "@/lib/bounded-form-data.ts";
-import { EXTRACTION_CHUNK_TOKENS_FLOOR } from "@/src/core/settings.ts";
+import { EXTRACTION_CHUNK_TOKENS_FLOOR } from "@/src/core";
 import {
 	emit,
 	ModelsNotConfiguredError,
