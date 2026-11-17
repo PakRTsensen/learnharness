@@ -98,17 +98,18 @@ function chainKey(premises: ReadonlyArray<string>, conclusion: string): string {
  *  for the format-agnostic notes front door (2026-09-13) — no coverage at
  *  all: the whole-file checkpoint stamps the import.
  *
- *  Coverage (vision-extraction-coverage.md, settled 2026-09-15): a chat merge
+ *  Coverage (vision-extraction-coverage.md, settled 2026-09-15): a merge
  *  passes the BATCH it extracted — the caller computed the fingerprints
  *  before the run, from the same snapshot the merger sees — and the final
- *  step appends one CoverageEntry per message on success ("covered" means
- *  exactly this merge happened). The notes path passes neither and keeps
- *  the whole-file checkpoint. */
+ *  step appends one CoverageEntry per unit on success ("covered" means
+ *  exactly this merge happened). Chats pass one entry per message; notes
+ *  imports pass one per stretch (issue #6), so an interrupted import resumes
+ *  at the first unmerged stretch. */
 export interface MergeSource {
 	foldedAt: string;
-	/** The batch being merged (chat path): one entry per message in the
-	 *  extracted batch — undefined (notes path / coverage-less callers) →
-	 *  the legacy whole-chat checkpoint is written instead. */
+	/** The batch being merged: one entry per unit in the extracted batch —
+	 *  undefined (coverage-less callers) → the legacy whole-chat checkpoint
+	 *  is written instead. */
 	coverage?: CoverageEntry[];
 }
 
@@ -277,10 +278,9 @@ export function mergeFindings(
 
 	// 3. Checkpoint — THE COVERAGE DISCIPLINE (vision-extraction-coverage.md):
 	//    only now, after every append succeeded, is the batch covered. The
-	//    chat path appends one CoverageEntry per message (per-batch atomic —
-	//    an abort or failure mid-run leaves earlier batches covered, this
-	//    batch's messages uncovered); the notes path keeps the whole-file
-	//    checkpoint (a file is one shot).
+	//    chat path appends one CoverageEntry per message; the notes path one
+	//    per STRETCH (issue #6) — both per-batch atomic: an abort or failure
+	//    mid-run leaves earlier batches covered, this batch uncovered.
 	if (source.coverage !== undefined) {
 		for (const entry of source.coverage) ledgers.appendCoverage(entry);
 	} else {

@@ -30,6 +30,15 @@ import type { GraphStore } from "../../core/ports.ts";
 import { emit } from "../../core/events.ts";
 import { settleGraphLayout } from "../../core/layout-settle.ts";
 import { batchRuns, coverageOf, messageViewLines } from "../../core/coverage.ts";
+import {
+	coveredStretches,
+	notesContentHash,
+	notesStretches,
+	planNotesChunks,
+	stretchCoverage,
+	type NotesChunk,
+	type NotesStretch,
+} from "../../core/notes-stretches.ts";
 import { failedOutputCallIds, type LhMessage } from "../../core/native-messages.ts";
 import { prepareAuditorReview } from "../tools/graph.ts";
 import { runSubmitAgent, healStringifiedArrays } from "./submit-agent.ts";
@@ -764,6 +773,13 @@ export type NotesImportInput = {
 	/** The source's file path — its identity (deterministic src id) AND its
 	 *  provenance label in the detail card. */
 	filePath: string;
+	/** Re-extract the whole file even where stretch checkpoints say the work
+	 *  is done (issue #6). Absent/false → resume, which is the default. */
+	force?: boolean;
+	/** Per-import chunk budget in tokens — overrides the settings value for
+	 *  this import only. It re-batches the remaining stretches and never
+	 *  invalidates a checkpoint, so changing it is always safe. */
+	chunkTokens?: number;
 } & (
 	/** The file's raw content, VERBATIM — any text format. */
 	| { text: string }
@@ -1277,26 +1293,17 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 		return `SOURCE (the author's personal notes): ${input.filePath}${part}\n\n${input.text}`;
 	}
 
-	/** Chunk the notes text under the same budget the chat path uses
-	 * (owner, 2026-09-28: the whole-file-in-one-call design collapsed a
-	 * weak model — 26 propositions, structure bleed mid-emission).
-	 * Greedy by line, chars/4 like every other estimate in the app; a
-	 * single over-budget line rides alone (never split a line). */
-	function chunkNotes(text: string, budget: number): string[] {
-		if (text.trim().length === 0) return [];
-		const out: string[] = [];
-		let current = "";
-		for (const line of text.split("\n")) {
-			const candidate = current.length === 0 ? line : current + "\n" + line;
-			if (current.length > 0 && Math.ceil(candidate.length / 4) > budget) {
-				out.push(current);
-				current = line;
-			} else {
-				current = candidate;
-			}
-		}
-		if (current.trim().length > 0) out.push(current);
-		return out;
+	/** Group the NOTES stretches into batchable chunks (issue #6). The stretch
+	 *  is the fixed checkpoint unit; the chunk budget only decides how many
+	 *  unfolded stretches ride in one call, so tuning it re-batches the
+	 *  remaining work without invalidating a single checkpoint.
+	 *
+	 *  `only` narrows the run to the given stretches (the force-re-extract
+	 *  path); otherwise everything the ledger has not covered runs. */
+	function chunkNotes(text: string, contentHash: string, budget: number, covered: Set<string>, only?: NotesStretch[]): NotesChunk[] {
+		const stretches = only ?? notesStretches(contentHash, text);
+		const todo = only ?? stretches.filter((stretch) => !covered.has(stretch.fp));
+		return planNotesChunks(todo, budget);
 	}
 
 	async function notesExtract(
@@ -1337,7 +1344,17 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 	// The notes auditor is the SAME identity-linker as the chat one (one
 	// schema now that attribution is gone) — audit() above, verbatim.
 
-	async function runNotesExtraction(input: { id: string; filePath: string; text: string; importedAt: string }): Promise<EmissionStats> {
+	async function runNotesExtraction(input: {
+		id: string;
+		filePath: string;
+		text: string;
+		importedAt: string;
+		/** Re-extract the whole file even where checkpoints say the work is
+		 *  done (issue #6): the explicit escape hatch, defaulting to resume. */
+		force?: boolean;
+		/** Per-import chunk budget; falls back to the settings value. */
+		chunkTokens?: number;
+	}): Promise<EmissionStats> {
 		const { id } = input;
 		// importNotes owns the source exclusion, including metadata and cleanup.
 		const t0 = performance.now();
@@ -1347,14 +1364,24 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 			// (2026-09-25): same refusal as the chat front door — no
 			// extractor/auditor engines, or a stage key gone, no run.
 			refuseIfStagesUnready();
-			// CHUNKED like the chat path (owner, 2026-09-28): each chunk is a
-			// standalone extract → audit → merge, so no single call carries a
-			// whole large file. Abort mid-run keeps earlier chunks merged
-			// (same doctrine as chat batches).
-			const chunkTokens = deps.getChunkTokens?.() ?? FACTORY_SETTINGS.graph.extractionChunkTokens;
-			const chunks = chunkNotes(input.text, chunkTokens);
+			// RESUME BY STRETCH (issue #6): the ledger already records which
+			// stretches of this exact content were merged. An identical
+			// re-import finishes instantly; a partial run continues where it
+			// stopped; an edited file invalidates every fingerprint through
+			// the content hash and starts clean. `force` overrides all of it.
+			const contentHash = notesContentHash(input.text);
+			const covered = input.force ? new Set<string>() : coveredStretches(graphStore.readCoverage(), id);
+			const allStretches = notesStretches(contentHash, input.text);
+			const remaining = allStretches.filter((stretch) => !covered.has(stretch.fp));
+			const chunkTokens = input.chunkTokens ?? deps.getChunkTokens?.() ?? FACTORY_SETTINGS.graph.extractionChunkTokens;
+			const chunks =
+				remaining.length === 0
+					? []
+					: chunkNotes(input.text, contentHash, chunkTokens, covered, input.force ? allStretches : undefined);
 			console.info(
-				`[extraction ${id}] notes pipeline start (${input.filePath}) — ${chunks.length} chunk(s) of ≤${chunkTokens} tok`,
+				`[extraction ${id}] notes pipeline start (${input.filePath}) — ${chunks.length} chunk(s) of ≤${chunkTokens} tok` +
+					`, ${allStretches.length - remaining.length}/${allStretches.length} stretch(es) already covered` +
+					`${input.force ? " (forced re-extract)" : ""}`,
 			);
 			// PER-CHUNK JOBS (owner, 2026-09-28), SERIALIZED PER SOURCE (owner,
 			// 2026-09-30 evening): same law as the chat door — chunks run
@@ -1376,7 +1403,7 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 						value: await runJob({ id, kind: "notes", label: input.filePath, part }, async (jobKey) => {
 							setPhase(jobKey, "extracting", "notes", input.filePath, part);
 							chunkSignal = runningExtractions.get(jobKey)?.controller.signal;
-							const findings = await notesExtract(jobKey, { ...input, text: chunk, part });
+							const findings = await notesExtract(jobKey, { ...input, text: chunk.text, part });
 							// SERIALIZED AUDIT (owner, 2026-09-28): audit + merge one
 							// at a time, process-wide — the auditor explores the graph
 							// as it stands AFTER every earlier job's merge. Reacquired
@@ -1390,7 +1417,14 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 									findings,
 									auditResult,
 									{ chatStore, graphStore },
-									{ foldedAt: input.importedAt },
+									{
+										foldedAt: input.importedAt,
+										// STRETCH CHECKPOINTS (issue #6): this chunk's
+										// stretches become covered only now, after every
+										// append above succeeded. An abort leaves them
+										// uncovered, so the next import resumes here.
+										coverage: stretchCoverage(id, chunk, input.importedAt),
+									},
 								);
 								// Capture the committed merge BEFORE layout/usage can fail.
 								mergedStats.nodes += merged.nodes;
@@ -1514,7 +1548,14 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 							await transcribeSource(id, input),
 							"--- END TRANSCRIPTION ---",
 						].join("\n");
-			return await runNotesExtraction({ id, filePath: input.filePath, text, importedAt });
+			return await runNotesExtraction({
+				id,
+				filePath: input.filePath,
+				text,
+				importedAt,
+				force: input.force,
+				chunkTokens: input.chunkTokens,
+			});
 		} catch (err) {
 			if (err instanceof NotesImportError || err instanceof ModelsNotConfiguredError || err instanceof ProviderKeyMissingError) throw err;
 			throw new NotesImportError("failed", { nodes: 0, chains: 0 }, err instanceof Error ? err.message : String(err), { cause: err });

@@ -25,6 +25,7 @@
 import { convertPdf, extraction, joinPages, notesImportInput, NotesImportError, sourceDirectory, type NotesImportInput } from "@/src/server";
 import { IMPORT_EXTENSIONS, MAX_IMPORT_BODY_BYTES, MAX_IMPORT_BYTES, UNSUPPORTED_TYPE_MESSAGE, validNotesPath } from "@/lib/notes-import-limits.ts";
 import { FormBodyLimitError, readBoundedFormData } from "@/lib/bounded-form-data.ts";
+import { EXTRACTION_CHUNK_TOKENS_FLOOR } from "@/src/core/settings.ts";
 import {
 	emit,
 	ModelsNotConfiguredError,
@@ -124,6 +125,17 @@ export async function POST(request: Request) {
 		return Response.json({ results: [], error: "Import contains an unsafe or mismatched relative path" }, { status: 400 });
 	}
 	const results: ImportResult[] = [];
+	// Per-import chunk budget (issue #6): a batching knob, never a checkpoint
+	// unit — changing it re-batches the remaining stretches and invalidates
+	// nothing. Junk falls back to the settings value (clamp-never-reject).
+	const rawChunkTokens = form.get("chunkTokens");
+	const parsedChunkTokens = typeof rawChunkTokens === "string" && rawChunkTokens.trim() !== "" ? Number(rawChunkTokens) : NaN;
+	const chunkTokens =
+		Number.isSafeInteger(parsedChunkTokens) && parsedChunkTokens > 0
+			? Math.max(EXTRACTION_CHUNK_TOKENS_FLOOR, parsedChunkTokens)
+			: undefined;
+	// Force re-extract (issue #6): the explicit escape hatch; resume is default.
+	const force = form.get("force") === "true";
 	const queue = files.map((file, requestIndex) => ({ file, requestIndex, filePath: paths[requestIndex]! }));
 	const workers = Array.from({ length: Math.min(3, files.length) }, async () => {
 		for (;;) {
@@ -138,8 +150,8 @@ export async function POST(request: Request) {
 				}
 				sourceDirectory.registerImport(filePath);
 				const stats = notes.kind === "notes"
-					? await extraction.importNotes({ filePath, text: notes.text })
-					: await extraction.importNotes(notes.input.filePath === filePath ? notes.input : { ...notes.input, filePath });
+					? await extraction.importNotes({ filePath, text: notes.text, force, chunkTokens })
+					: await extraction.importNotes(notes.input.filePath === filePath ? { ...notes.input, force, chunkTokens } : { ...notes.input, filePath, force, chunkTokens });
 				results.push({ filePath, requestIndex, outcome: "completed", ok: true, stats, ...(notes.notice ? { notice: notes.notice } : {}) });
 			} catch (err) {
 				if (err instanceof ModelsNotConfiguredError) {
