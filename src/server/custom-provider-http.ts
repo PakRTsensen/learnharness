@@ -92,7 +92,11 @@ export async function customProviderMutation(request: Request): Promise<Response
 		const raw = body as Record<string, unknown>;
 		const before = snapshot(raw.authMode === "apiKey");
 		if (!before.auth.readable) return failure("Custom authorization storage is unavailable. No changes were saved.", 500);
-		if (request.headers.get("if-match") !== before.etag) return stale();
+		// A compressing intermediary (Cloudflare) forwards the strong tag as
+		// `W/"..."`; the browser then echoes that weakened form in If-Match.
+		// Compare the opaque tag so an unchanged entity is not reported stale.
+		const ifMatch = request.headers.get("if-match");
+		if (ifMatch?.replace(/^W\//, "") !== before.etag) return stale();
 		if (request.method === "DELETE") {
 			commit(undefined, { version: 1, id: randomBytes(16).toString("hex"), authMode: "disabled" });
 			return response({ ok: true });

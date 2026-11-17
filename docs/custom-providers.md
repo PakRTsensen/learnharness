@@ -28,7 +28,7 @@ Edit each model's pins offline:
 
 Positive integer token pins are accepted, including small output limits; blank removes a pin. The editor labels reported, fallback, and pinned values. **These are request/compaction budgets, not commands to resize the backend's context.** Configure the server separately and match its active limits. Reconnecting prunes pins only to the resulting model IDs.
 
-Reasoning support declares a capability; it does not enable execution. The normal Pi effort picker remains available, but **Off may not disable a backend's default thinking**. There is no model-name inference, Ollama preset, thinking-map/compatibility editor, or nonstandard-header editor.
+Reasoning support declares a capability; it does not enable execution. When the endpoint publishes a level contract (9router's `thinking_levels`), the effort picker offers exactly those levels and **Off sends the endpoint's own disable signal** (`reasoning_effort: "none"`); a model that reports thinking cannot be disabled hides Off and clamps up. Endpoints that publish nothing keep the standard level set and do not receive an effort parameter. There is no model-name inference, Ollama preset, thinking-map editor, or nonstandard-header editor.
 
 ## Images
 

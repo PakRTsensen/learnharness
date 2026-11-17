@@ -87,6 +87,21 @@ describe("sanitizeUserSettings — customProvider", () => {
 		});
 		assert.deepEqual(out?.customProvider?.models, [{ id: "thinker", reasoning: true }, { id: "plain" }]);
 	});
+	it("keeps declared thinking levels and the disable flag, dropping junk", () => {
+		const out = sanitizeUserSettings({
+			customProvider: {
+				baseUrl: "https://h/v1",
+				models: [
+					{ id: "declared", thinkingLevels: [" none ", "HIGH", "none", 3, ""], thinkingCanDisable: false },
+					{ id: "junk", thinkingLevels: "none", thinkingCanDisable: "yes" },
+				],
+			},
+		});
+		assert.deepEqual(out?.customProvider?.models, [
+			{ id: "declared", thinkingLevels: ["none", "high"], thinkingCanDisable: false },
+			{ id: "junk" },
+		]);
+	});
 });
 
 // ─── per-model pins: the read side + THE prune law ───────────────────────────
@@ -280,6 +295,41 @@ describe("buildOpenAiCompatibleProvider / syncCustomProvider", () => {
 		assert.deepEqual(getSupportedThinkingLevels(plain!), ["off"]);
 	});
 
+	it("offers exactly the endpoint's declared levels and makes Off a real disable request", () => {
+		const provider = buildOpenAiCompatibleProvider({
+			baseUrl: "https://api.example/v1",
+			models: [{
+				id: "deepseek",
+				reasoning: true,
+				thinkingLevels: ["none", "high", "max"],
+				thinkingCanDisable: true,
+				context: 1_000_000,
+				maxTokens: 384_000,
+			}],
+		});
+		const [deepseek] = provider.getModels();
+		assert.equal(deepseek!.maxTokens, 384_000, "the endpoint's max_completion_tokens is used verbatim");
+		assert.deepEqual(getSupportedThinkingLevels(deepseek!), ["off", "high", "max"], "no invented low/medium/xhigh");
+		assert.equal(deepseek!.thinkingLevelMap?.off, "none", "Off sends reasoning_effort none");
+		assert.equal(deepseek!.thinkingLevelMap?.low, null, "undeclared levels stay hidden");
+		assert.equal(deepseek!.thinkingLevelMap?.high, "high");
+		assert.equal(deepseek!.thinkingLevelMap?.max, "max");
+		assert.equal((deepseek!.compat as { supportsReasoningEffort?: boolean }).supportsReasoningEffort, true);
+	});
+
+	it("maps the binary thinking gate to High and hides Off when the endpoint cannot disable", () => {
+		const provider = buildOpenAiCompatibleProvider({
+			baseUrl: "https://api.example/v1",
+			models: [
+				{ id: "binary", reasoning: true, thinkingLevels: ["thinking"], thinkingCanDisable: false },
+				{ id: "none-but-locked", reasoning: true, thinkingLevels: ["none", "low", "high"], thinkingCanDisable: false },
+			],
+		});
+		const [binary, locked] = provider.getModels();
+		assert.deepEqual(getSupportedThinkingLevels(binary!), ["high"], "a one-level gate is one on level");
+		assert.deepEqual(getSupportedThinkingLevels(locked!), ["low", "high"], "thinkingCanDisable:false hides Off even when none is listed");
+	});
+
 	it("registers the native provider in the shared collection", () => {
 		piModels().setProvider(buildOpenAiCompatibleProvider({ baseUrl: "http://h/v1", models: [{ id: "live" }] }));
 		assert.ok(piModels().getProvider(CUSTOM_PROVIDER.id), "provider registered");
@@ -377,6 +427,7 @@ describe("discoverModels", () => {
 					{ id: "bool-reasoner", reasoning: true },
 					{ id: "thinking-flag", thinking: true },
 					{ id: "cap-reasoner", capabilities: ["completion", "reasoning"] },
+					{ id: "nested-reasoner", capabilities: { tools: true, reasoning: true } },
 					{ id: "deepseek-r1-distill" }, // a reasoning-sounding NAME, no metadata → stays off
 				],
 			},
@@ -388,7 +439,57 @@ describe("discoverModels", () => {
 		assert.equal(byId["bool-reasoner"], true);
 		assert.equal(byId["thinking-flag"], true);
 		assert.equal(byId["cap-reasoner"], true);
+		assert.equal(byId["nested-reasoner"], true, "9router nests reasoning inside the capabilities object");
 		assert.equal(byId["deepseek-r1-distill"], false, "name guessing would risk sending reasoning_effort to a server that rejects it");
+	});
+
+	it("reads 9router's declared limits, nested capabilities and thinking contract", async () => {
+		stubFetch(() => ({
+			status: 200,
+			body: {
+				data: [
+					{
+						id: "ca/deepseek-v4-1-flash-1017",
+						object: "model",
+						owned_by: "ca",
+						capabilities: {
+							vision: false, tools: true, reasoning: true,
+							thinkingFormat: "deepseek", thinkingCanDisable: true,
+							contextWindow: 1_000_000, maxOutput: 384_000,
+						},
+						context_length: 1_000_000,
+						max_completion_tokens: 384_000,
+						thinking_levels: ["none", "high", "max"],
+					},
+					{
+						// Nested-only copy of every limit, plus an image flag and a
+						// binary thinking gate — the fallbacks the parser must read.
+						id: "nested-only",
+						capabilities: { vision: true, reasoning: true, contextWindow: 262_144, maxOutput: 64_000, thinkingCanDisable: false },
+						thinking_levels: ["thinking"],
+					},
+					{ id: "plain" },
+				],
+			},
+		}));
+		const r = await discoverModels("https://api.example/v1");
+		assert.ok(r.ok);
+		const byId = Object.fromEntries(r.models.map((m) => [m.id, m]));
+		assert.deepEqual(byId["ca/deepseek-v4-1-flash-1017"], {
+			id: "ca/deepseek-v4-1-flash-1017",
+			reasoning: true,
+			context: 1_000_000,
+			maxTokens: 384_000,
+			thinkingLevels: ["none", "high", "max"],
+			thinkingCanDisable: true,
+		});
+		assert.equal(byId["nested-only"]!.context, 262_144, "capabilities.contextWindow is the fallback");
+		assert.equal(byId["nested-only"]!.maxTokens, 64_000, "capabilities.maxOutput is the fallback");
+		assert.equal(byId["nested-only"]!.image, true, "capabilities.vision is image input");
+		assert.equal(byId["nested-only"]!.reasoning, true);
+		assert.deepEqual(byId["nested-only"]!.thinkingLevels, ["thinking"]);
+		assert.equal(byId["nested-only"]!.thinkingCanDisable, false);
+		assert.deepEqual(byId["plain"], { id: "plain" }, "silent rows keep the defaults");
 	});
 
 	it("guards the scheme before any fetch", async () => {
