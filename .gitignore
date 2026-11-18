@@ -29,3 +29,22 @@ xai-credentials.json*
 
 # dev-fresh launcher scratch (fresh-user sim): disposable per launch
 .fresh-data/
+
+# multi-user profile artifacts (per-user-accounts): the production defaults are
+# absolute /data paths, so these entries only catch a dev run that points
+# LH_ACCOUNT_ROOT/LH_REGISTRY_DIR/... into the checkout. Never commit them.
+/accounts/
+/registry/
+/instance/
+/staging/
+/snapshots/
+/private-work/
+/multiuser-data/
+*.sock
+
+# Local agent state (serena memories/cache, playwright-mcp page dumps)
+.serena/
+.playwright-mcp/
+# Ad-hoc QA screenshots
+/custom-endpoint-after-fix.png
+/custom-endpoint-stale-error.png

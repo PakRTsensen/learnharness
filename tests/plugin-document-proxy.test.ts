@@ -14,7 +14,8 @@ const origin = "http://localhost";
 const documentPath = "/api/plugins/document-one/documents/markdown";
 const result = { name: "small.txt", markdown: "small valid text 字", notices: [] as string[] };
 
-/** Next's router tests the raw AND decoded pathname with OR semantics. */
+/** Next combines matcher entries with OR semantics, so check the exact
+ * exported config for both the broad page matcher and API-specific entries. */
 function proxyMatches(path: string): boolean {
 	const url = new URL(path, origin);
 	const matches = (value: URL) => unstable_doesProxyMatch({ config, nextConfig: {}, url: value.href });
@@ -39,7 +40,7 @@ it("Proxy retains API roots, siblings, endpoint lookalikes and all other API rou
 		"/api/plugins/document-one/other/documents/markdown", "/api/plugins/documents/markdown",
 		"/api/graph/import", "/api/events", "/api/chat", "/api/settings/models", "/api/chats/scratch/markdown",
 	]) assert.equal(proxyMatches(path), true, path);
-	for (const path of ["/", "/chat/new", "/apix", "/api-other/plugins/document-one/documents/markdown"]) {
+	for (const path of ["/apix", "/api-other/plugins/document-one/documents/markdown", `${documentPath}/not-an-endpoint`]) {
 		assert.equal(proxyMatches(path), false, path);
 	}
 });
@@ -157,7 +158,7 @@ it("document route authenticates ALL methods before params, transport/getHost, o
 			assert.equal(response.status, 403, method);
 			assert.equal(response.headers.get("Cache-Control"), "no-store", method);
 			assert.deepEqual(await response.json(), forbidden, method);
-			const proxyRefusal = proxy(new NextRequest(new URL("/api/settings", origin), { method, headers }));
+			const proxyRefusal = await proxy(new NextRequest(new URL("/api/settings", origin), { method, headers }));
 			assert.equal(response.status, proxyRefusal.status, `${method}: same existing Proxy policy`);
 			assert.deepEqual(await proxyRefusal.json(), forbidden, method);
 			assert.equal(paramsAccesses, 0, method);

@@ -14,9 +14,24 @@ This reference describes the [repository source](README.md#about-these-docs). Se
 | `src/agent/` | Agent construction, tools, provider streams, workers; `teacher-agent.ts`, `models.ts`, `tools.ts`, `subagents/` |
 | `src/core/` | Contracts, record/view projections, domain algorithms; `input-events.ts`, `native-messages.ts`, `view.ts`, `graph.ts` |
 | `src/store/` | Filesystem adapters for chats, jobs, graph, settings, and credentials |
+| `src/runtime/` | Deployment-mode selection, multi-user configuration, readiness gate; `deployment-mode.ts`, `multiuser-config.ts`, `readiness.ts` |
 | `electron/` | Desktop launch, navigation/permission guards, credential transport, browser helper, updater |
 
-[`eslint.config.mjs`](../eslint.config.mjs) restricts shell imports into `src/` to the core/server barrels, prevents core imports from IO layers, and prevents agents importing server/store adapters. Dependencies arrive through injected contexts/ports. These rules are not a proof of pure core, one composition root, or one writer per store: some core modules are Node-bound and excluded from the browser barrel; server modules can import adapters. Scripts, Electron, and tests are outside these zones.
+[`eslint.config.mjs`](../eslint.config.mjs) restricts shell imports into `src/` to approved entry points: `components/` uses the core barrel; ordinary `app/` routes use the core and main server barrels; only `app/_account/**` may use the narrow `src/server/account-entry.ts` composition, and only the exact streamed plugin-document route may use `src/server/plugin-document-entry.ts`. Those narrow entries must not re-export the main server barrel or initialize shared stores in multi-user mode. The rules also prevent core imports from IO layers and agents importing server/store adapters. Dependencies arrive through injected contexts/ports. These rules are not a proof of pure core, one composition root, or one writer per store: some core modules are Node-bound and excluded from the browser barrel; server modules can import adapters. Scripts, Electron, and tests are outside these zones.
+
+## Deployment modes
+
+One repository, three composition roots, selected explicitly by `LH_DEPLOYMENT_MODE` (`src/runtime/deployment-mode.ts`):
+
+| Mode | Selected by | Storage | Authentication |
+| --- | --- | --- | --- |
+| `desktop` | The Electron shell's `LH_DESKTOP_SERVER`/`LH_DESKTOP_API_SECRET`, or an explicit value | One local profile under `LH_DATA_DIR`/`LH_AUTH_FILE` (userData) | Desktop capability; no accounts |
+| `single-user` | Default outside Electron, or an explicit value | The same single shared profile (`data/` in a checkout) | The existing browser host/cross-site gate |
+| `multiuser-web` | `LH_DEPLOYMENT_MODE=multiuser-web` **only** | Per-account roots owned by per-account Linux identities | Clerk, verified by the account controller |
+
+Presence of Clerk settings (`CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, or `LH_CLERK_AUTHORIZED_PARTIES`) never selects multi-user mode; they are inert (with a startup warning) in the other profiles. Multiuser-web requires an explicit canonical-origin allowlist, used by Clerk's `authorizedParties` verification rather than inferred from request headers. An unknown explicit value is a refusal, not a fallback: `config.ts` exports the whole selection (`DEPLOYMENT_SELECTION`), `instrumentation.ts` exits before choosing a composition root, and `src/server/stores.ts` refuses to load the shared adapters.
+
+**Multi-user is a preview, not a supported deployment yet.** Phase 1 ships the seam and the refusal: `src/runtime/readiness.ts` validates the declared roots, the 1,000+ UID/GID window, the mandatory resource limits, a read-only container root, a distinct mount and filesystem source per writable root, and the absence of a mounted Docker socket (`docker.sock` or `docker.socket`). Every non-account root must be root-owned with mode exactly `0700`. Against the declared `LH_WEB_UID`/`LH_WEB_GID` (cross-checked against the identity and supplementary groups the process really has), the gate requires that the account root grant the web identity no access bits and that its supplementary groups not overlap the account GID window. If any check fails, `instrumentation.ts` prints the reasons and exits before the server accepts a request — there is no shared-storage fallback. `src/server/stores.ts` refuses to load in this mode, and `src/server/account-relay.ts` refuses instead of serving shared records; the controller transport, per-account workers, and the root helper arrive in later phases. Until then, treat a `multiuser-web` container as non-functional by design.
 
 ## Conversations and turns
 

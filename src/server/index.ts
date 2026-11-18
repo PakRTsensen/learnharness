@@ -17,6 +17,15 @@ export * from "./commit-positions.ts";
 export * from "./jobs.ts";
 export { prepareSubmissionImages, prepareSubmissionImageChannels } from "./submission-images.ts";
 export * from "./stores.ts";
+// The request-scoped account relay (per-user-accounts phase 1): the seam that
+// replaces direct global-store use in multiuser-web. The controller transport
+// behind it arrives in phase 3; until then this profile refuses to serve.
+export {
+	accountRelay,
+	AccountRelayUnavailableError,
+	type AccountRelay,
+	type RelayScope,
+} from "./account-relay.ts";
 export { recordStudy, studyHistory } from "./study.ts";
 export { refreshWorkerRequestAdmission } from "../agent/worker-request-admission.ts";
 export { readRenderSettings, writeRenderSettings } from "../store/render-settings.ts";
@@ -59,6 +68,11 @@ export { subscriptionControlsResponse, subscriptionBrowserResponse } from "./web
 export { sessionCost } from "./pricing.ts";
 export { initializePlugins, getPluginHost, getPluginAgentContributions, getPluginQuestionTypeResolver, pluginTransport } from "./plugins.ts";
 export { createPluginDocumentRoute } from "./plugin-transport.ts";
+export { webAccountService } from "./account-web.ts";
+export { webAccountController } from "./web-account-composition.ts";
+export { readRequestThemeBoot } from "./theme-boot-request.ts";
+export { createClerkWebhookRoute } from "./clerk-webhook.ts";
+export { messageForAccountMutation } from "./account-mutation-route.ts";
 export { pluginProblemAvailabilityOf, type ProblemTypeResolver } from "./plugin-problems.ts";
 export { pluginQuestionAvailabilityOf, reconcilePluginQuestionCompatibility, preparePluginQuestionDismissal, type QuestionTypeResolver } from "./plugin-questions.ts";
 export { claudeCodeInstallationResponse } from "./claude-code.ts";

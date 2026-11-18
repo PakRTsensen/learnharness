@@ -10,6 +10,8 @@ import importPlugin from "eslint-plugin-import";
  *
  *   components/**  →  "@/src/core"  (the pure core barrel) — ONLY
  *   app/**         →  "@/src/core" + "@/src/server" (the server barrel) — ONLY
+ *                    except app/_account/** and the exact streamed plugin route,
+ *                    which use narrow server entries instead of the barrel
  *   src/core/**    →  never imports src/agent, src/server, src/store (pure
  *                    core: adapters implement core/ports.ts, never the reverse)
  *   src/agent/**   →  never imports src/server, src/store (dependencies —
@@ -21,7 +23,7 @@ import importPlugin from "eslint-plugin-import";
 
 export default defineConfig([
 	// electron/** — the desktop shell: plain Node, no framework, outside the
-// import law (same rationale as scripts/).
+	// import law (same rationale as scripts/).
 	globalIgnores([".next/**", "node_modules/**", "data/**", "next-env.d.ts", "scripts/**", "electron/**", "dist/**"]),
 	{
 		files: ["**/*.{js,mjs,ts,tsx}"],
@@ -48,13 +50,6 @@ export default defineConfig([
 								"Browser shell imports ONLY the pure core barrel: `from \"@/src/core\"` (architecture: docs/architecture.md).",
 						},
 						{
-							target: "./app",
-							from: "./src",
-							except: ["./core/index.ts", "./server/index.ts"],
-							message:
-								"app/ (transport + server components) imports ONLY the barrels: `@/src/core` and `@/src/server` (architecture: docs/architecture.md).",
-						},
-						{
 							target: "./src/core",
 							from: ["./src/agent", "./src/server", "./src/store"],
 							message:
@@ -67,6 +62,58 @@ export default defineConfig([
 								"The agent layer receives its dependencies (storage ports via factories/closures) — it never imports the server layer or store adapters (architecture: docs/architecture.md).",
 						},
 					],
+				},
+			],
+		},
+	},
+	{
+		files: ["app/**/*.{js,mjs,ts,tsx}"],
+		ignores: ["app/_account/**", "app/api/plugins/[[]id[]]/**"],
+		rules: {
+			"import/no-restricted-paths": [
+				"error",
+				{
+					zones: [{
+						target: "./app",
+						from: "./src",
+						except: ["./core/index.ts", "./server/index.ts"],
+						message:
+							"Ordinary app/ routes import only the `@/src/core` and `@/src/server` barrels (architecture: docs/architecture.md).",
+					}],
+				},
+			],
+		},
+	},
+	{
+		files: ["app/_account/**/*.{js,mjs,ts,tsx}"],
+		rules: {
+			"import/no-restricted-paths": [
+				"error",
+				{
+					zones: [{
+						target: "./app/_account",
+						from: "./src",
+						except: ["./core/index.ts", "./server/account-entry.ts"],
+						message:
+							"app/_account/** imports only `@/src/core` and the narrow `@/src/server/account-entry.ts`; never the main server barrel or its adapters.",
+					}],
+				},
+			],
+		},
+	},
+	{
+		files: ["app/api/plugins/[[]id[]]/documents/markdown/route.ts"],
+		rules: {
+			"import/no-restricted-paths": [
+				"error",
+				{
+					zones: [{
+						target: "./app/api/plugins/[[]id[]]/documents/markdown/route.ts",
+						from: "./src",
+						except: ["./server/plugin-document-entry.ts"],
+						message:
+							"The exact streamed plugin-document route imports only `@/src/server/plugin-document-entry` from src/.",
+					}],
 				},
 			],
 		},

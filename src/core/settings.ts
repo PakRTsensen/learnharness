@@ -247,6 +247,14 @@ export interface CustomModel {
 	context?: number;
 	/** Max output tokens, from the endpoint. Absent → the default. */
 	maxTokens?: number;
+	/** Selectable reasoning levels the endpoint declares (9router publishes
+	 *  `thinking_levels`). "none" means off; the binary "thinking" gate is one
+	 *  on level. Absent → pi-ai's standard set, like any reasoning model. */
+	thinkingLevels?: string[];
+	/** The endpoint's own statement that thinking can be turned off
+	 *  (`capabilities.thinkingCanDisable`). Read only when the declared
+	 *  levels include "none". Absent → allowed. */
+	thinkingCanDisable?: boolean;
 }
 
 /** A user pin for one custom model: it beats what the endpoint publishes
@@ -684,6 +692,22 @@ export function sanitizeCustomModelOverrides(
 	return out;
 }
 
+/** Declared reasoning levels: trimmed, lowercased, unique, bounded — the
+ *  vendor's vocabulary stays verbatim (the provider map owns the translation
+ *  to pi-ai's scale). Junk collapses to undefined, never to a rejection. */
+export function sanitizeThinkingLevels(raw: unknown): string[] | undefined {
+	if (!Array.isArray(raw)) return undefined;
+	const out: string[] = [];
+	for (const value of raw) {
+		if (typeof value !== "string") continue;
+		const level = value.trim().toLowerCase();
+		if (!level || level.length > 32 || out.includes(level)) continue;
+		out.push(level);
+		if (out.length === 16) break;
+	}
+	return out.length ? out : undefined;
+}
+
 /** The customProvider section: normalized base URL (invalid → dropped) and
  *  discovered models (ids trimmed, dupes/empties dropped; image kept only when
  *  true; token counts only as positive ints). Clamp-never-reject. */
@@ -710,6 +734,9 @@ function sanitizeCustomProvider(raw: Record<string, unknown>): CustomProviderSet
 			if (context) model.context = context;
 			const maxTokens = positiveInt(rec.maxTokens);
 			if (maxTokens) model.maxTokens = maxTokens;
+			const thinkingLevels = sanitizeThinkingLevels(rec.thinkingLevels);
+			if (thinkingLevels) model.thinkingLevels = thinkingLevels;
+			if (typeof rec.thinkingCanDisable === "boolean") model.thinkingCanDisable = rec.thinkingCanDisable;
 			byId.set(id, model);
 		}
 		out.models = [...byId.values()];

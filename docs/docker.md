@@ -4,11 +4,53 @@ LearnHarness ships a multi-stage `Dockerfile` and a `docker-compose.yml` for a
 self-hosted web deployment. The image runs the Next.js **standalone** server
 (`node server.js`) as the unprivileged `node` user.
 
-> **Access control is your job.** LearnHarness has no user accounts. Its own
+> **Access control is your job.** LearnHarness has no user accounts in its
+> supported profiles. Its own
 > [development guide](development.md#subscription-connections-in-webdev) says a
 > public deployment needs an independent access gate. Put it behind a reverse
 > proxy with authentication (Basic Auth, Authelia, Cloudflare Access, …), a
 > VPN, or a private network — never expose port 3000 directly to the Internet.
+
+## Multi-user web: preview only
+
+The [architecture](architecture.md#deployment-modes) documents an optional
+`LH_DEPLOYMENT_MODE=multiuser-web` profile that will eventually authenticate
+each user with Clerk and give every account its own Linux UID/GID. **It is not
+usable yet.** Phase 1 of that work ships only the configuration surface and a
+fail-closed startup gate; the account controller, per-account workers, and the
+root helper are still missing.
+
+What the current build does in that mode:
+
+- It validates `LH_ACCOUNT_ROOT`, `LH_REGISTRY_DIR`, `LH_INSTANCE_STATE_DIR`,
+  `LH_STAGING_DIR`, `LH_SNAPSHOT_DIR`, `LH_PRIVATE_WORK_DIR`, both IPC socket
+  paths, the UID/GID window, the Clerk keys and explicit trusted-origin list,
+  and every mandatory resource limit.
+- It takes the unprivileged web identity from `LH_WEB_UID`/`LH_WEB_GID` (default
+  `1000:1000`, matching the image's `USER node`), refuses to start when those do
+  not match the identity the process actually runs as, and accounts for its
+  supplementary groups when checking permissions. Those groups must not overlap
+  the account GID window. Every non-account root must be root-owned with mode
+  exactly `0700`; the account root must be root-owned and grant the web identity
+  no access bits at all.
+- It requires this container's root filesystem to be read-only, every writable
+  root to be its own mount point with a distinct filesystem source (bind-mounting
+  one host directory at multiple roots is refused), and no `docker.sock` or
+  `docker.socket` to be mounted.
+- If anything is missing it prints the reasons and exits before serving. The
+  Next.js barrel refuses to open the shared stores in this mode, and the account
+  relay refuses instead of serving shared records.
+
+The Phase 1 gate still has boundaries that Phase 3's A12/A13 deployment and
+real-Docker tests must close: strict bounds for host/service identities and the
+legacy data path, prevention of a runtime process spoofing the build-only
+`NEXT_PHASE` exception, and handling of POSIX ACLs and setuid/setgid bits. The
+current injected-facts gate does not claim to close these gaps.
+
+Do not point real users at this mode, and keep using the supported
+single-profile deployment below until the later phases land. The expected
+environment layout is documented in
+[`.env.example`](../.env.example).
 
 ## Quick start
 
@@ -162,6 +204,7 @@ image explicitly (`docker compose build`) when you update the code.
 | `LH_DATA_DIR` | `/data` | All chats, graph ledgers, settings, jobs. |
 | `LH_AUTH_FILE` | `/data/auth.json` | BYOK key store (read/write by the server). |
 | `LH_ALLOWED_HOSTS` | — | Exact domain names accepted by the browser API; comma-separated, no protocol/port/path. Required behind a reverse proxy. |
+| `LH_CLERK_AUTHORIZED_PARTIES` | — | Multiuser-web only: comma-separated canonical trusted origins (`https://host[:port]`); HTTP is allowed only for localhost. Required for Clerk session verification. |
 | `OPENROUTER_API_KEY` | — | Default LLM engine. |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, … | — | Other providers (see `src/core/auth-keys.ts`). |
 | `TAVILY_API_KEY` / `BRAVE_API_KEY` / `FIRECRAWL_API_KEY` | — | Optional web search. |

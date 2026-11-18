@@ -16,6 +16,9 @@
  */
 
 export * from "./contracts.ts";
+export type { PublicAccountStatus } from "./account-status.ts";
+export type { WebAccountAccess } from "./web-account-access.ts";
+export { isPublicWebAuthenticationPath } from "./web-authentication-path.ts";
 export { embedLearnerImage } from "./learner-image-svg.ts";
 export * from "./ports.ts";
 export * from "./chains.ts";

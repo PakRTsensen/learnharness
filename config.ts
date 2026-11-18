@@ -1,8 +1,71 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { selectDeploymentMode, type DeploymentMode } from "./src/runtime/deployment-mode.ts";
+import { LAYOUT_VARIABLES, canonicalLayoutPath } from "./src/runtime/multiuser-config.ts";
+
 /** Repository root (this file is at <root>/config.ts). */
 export const ROOT = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * THE DEPLOYMENT SELECTION (per-user-accounts phase 1). `multiuser-web` is an
+ * EXPLICIT opt-in; nothing here infers it from Clerk variables.
+ *
+ * The FULL selection is exported, not just the mode, because a refusal must
+ * stay visible. Collapsing an invalid `LH_DEPLOYMENT_MODE` to `single-user`
+ * here would turn an operator typo into a silently serving shared-storage
+ * deployment. Module load must not throw (a `tsc` or test import would die on
+ * an unrelated typo), so the refusal is carried as data and enforced by every
+ * composition root: instrumentation.ts exits, stores.ts refuses to load.
+ */
+export const DEPLOYMENT_SELECTION = selectDeploymentMode(process.env);
+export const DEPLOYMENT_MODE: DeploymentMode = DEPLOYMENT_SELECTION.ok ? DEPLOYMENT_SELECTION.mode : "single-user";
+
+/**
+ * INSTANCE LAYOUT — the durable paths that must OUTLIVE and stay OUTSIDE any
+ * account home (per-user-accounts phase 1).
+ *
+ * These are the roots the operator declares at deploy time:
+ *
+ *   registry      controller-only account registry + UID/GID non-reuse ledger
+ *   instanceState controller-only instance state (encryption keys, shared policy)
+ *   accounts      account homes (each owned by its own Linux identity)
+ *   staging       root-locked upload/import staging outside live account data
+ *   snapshots     root-controlled export snapshots
+ *   privateWork   per-account private working directories (temp/caches)
+ *
+ * The account-controlled paths (accounts, privateWork) are DERIVED FROM the
+ * deployment environment only. No account, request, plugin, or archive may feed
+ * a path into this object: the controller/helper configuration is derived at
+ * process start and never re-read from account storage. In single-user and
+ * desktop profiles these paths are inert — nothing writes them unless the
+ * multiuser composition root runs.
+ *
+ * Defaults come from LAYOUT_VARIABLES in src/runtime/multiuser-config.ts so the
+ * readiness gate and this layout cannot drift apart.
+ */
+const layoutDefault = (key: keyof typeof LAYOUT_VARIABLES): string => LAYOUT_VARIABLES[key].fallback;
+
+/**
+ * Canonicalize through the SAME function the readiness gate uses, so a trailing
+ * slash in the environment cannot make this layout and the validated config
+ * disagree about whether two paths are the same path.
+ */
+const layoutValue = (name: string, key: keyof typeof LAYOUT_VARIABLES): string =>
+	canonicalLayoutPath((process.env[name] ?? "").trim() || layoutDefault(key));
+
+export const INSTANCE_PATHS = {
+	accounts: layoutValue("LH_ACCOUNT_ROOT", "accountRoot"),
+	registry: layoutValue("LH_REGISTRY_DIR", "registryDir"),
+	instanceState: layoutValue("LH_INSTANCE_STATE_DIR", "instanceStateDir"),
+	staging: layoutValue("LH_STAGING_DIR", "stagingDir"),
+	snapshots: layoutValue("LH_SNAPSHOT_DIR", "snapshotDir"),
+	privateWork: layoutValue("LH_PRIVATE_WORK_DIR", "privateWorkDir"),
+	/** Private IPC endpoints (web relay → controller → root helper). */
+	controllerIpc: layoutValue("LH_CONTROLLER_IPC", "controllerIpc"),
+	helperIpc: layoutValue("LH_HELPER_IPC", "helperIpc"),
+} as const;
+
 
 /**
  * THE data-location seam (the Electron contract, 2026-09-17): LH_DATA_DIR

@@ -13,6 +13,9 @@ import { LhMark } from "@/components/lh-mark";
 import { BrailleSpinner } from "@/components/braille-spinner";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { SettingsDialogProvider, useSettingsDialog } from "@/components/settings/settings-dialog.tsx";
+import dynamic from "next/dynamic";
+const MultiuserUserButton = dynamic(() => import("./multiuser-clerk.tsx").then(module => module.MultiuserUserButton), { ssr: false });
+import { useAccountState } from "@/components/account-state";
 import { Hint } from "@/components/ui/hint";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -419,6 +422,7 @@ function SessionsSidebar() {
 	const pathname = usePathname();
 	const router = useRouter();
 	const { open: openSettings } = useSettingsDialog();
+	const account = useAccountState();
 
 	/* New session (owner, 2026-09-13): NO POST — the button opens the
 	   sessionless draft view; the session is created only when the first
@@ -857,6 +861,9 @@ function SessionsSidebar() {
 					    New session — quiet, bottom-pinned, opens the centered
 					    dialog (also mod+, in the keyboard registry). */}
 					<div className="px-3 pb-3 pt-1">
+						{account && <div className="mb-2 flex items-center gap-2 px-2 text-xs text-muted-foreground">
+							<MultiuserUserButton /><span>Account</span>
+						</div>}
 						<Hint label="Settings" action="open-settings" side="right">
 							<button
 								type="button"

@@ -1,10 +1,10 @@
-import { createPluginDocumentRoute, pluginTransport } from "@/src/server";
+import { createPluginDocumentEndpoint } from "@/src/server/plugin-document-entry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// This exact route skips Proxy body cloning, NOT desktop authentication.
-const handlers = createPluginDocumentRoute(pluginTransport);
+// This exact route skips Proxy body cloning, NOT desktop/multiuser authentication.
+const handlers = createPluginDocumentEndpoint();
 export const POST = handlers.POST;
 export const OPTIONS = handlers.OPTIONS;
 export const GET = handlers.GET;
